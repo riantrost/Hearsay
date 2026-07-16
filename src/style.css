@@ -1,0 +1,128 @@
+* { margin: 0; box-sizing: border-box; }
+
+html, body, #app { height: 100%; overflow: hidden; }
+
+body {
+  font-family: Georgia, 'Times New Roman', serif;
+  background: #22303c;
+  color: #2b3a47;
+}
+
+.map-host {
+  position: absolute;
+  inset: 0;
+  touch-action: none;
+  cursor: grab;
+}
+.map-host:active { cursor: grabbing; }
+
+svg.map { width: 100%; height: 100%; display: block; }
+
+/* pins */
+.pin { cursor: pointer; }
+.pin-halo {
+  fill: #b8552f;
+  opacity: 0.18;
+}
+.pin-dot {
+  fill: #b8552f;
+  stroke: #f4ede2;
+  stroke-width: 2.5;
+}
+.pin.selected .pin-dot { fill: #7a2f14; }
+.pin.selected .pin-halo { opacity: 0.3; }
+.pin-count {
+  fill: #f4ede2;
+  font-size: 11px;
+  font-weight: bold;
+  text-anchor: middle;
+  pointer-events: none;
+}
+.pin-scrawl {
+  fill: #3d5266;
+  font-size: 14px;
+  pointer-events: none;
+}
+.pin-label {
+  fill: #3d5266;
+  font-size: 15px;
+  font-style: italic;
+  text-anchor: middle;
+  paint-order: stroke;
+  stroke: #e8f0f6;
+  stroke-width: 3px;
+  pointer-events: none;
+}
+
+/* pin surface */
+.pin-surface {
+  position: absolute;
+  top: 0;
+  right: 0;
+  bottom: 52px;
+  width: min(380px, 90vw);
+  overflow-y: auto;
+  background: #f4ede2;
+  border-left: 1px solid #d8cdb8;
+  padding: 20px 22px 32px;
+  box-shadow: -6px 0 24px rgba(20, 30, 40, 0.25);
+}
+.pin-surface h2 {
+  font-size: 22px;
+  letter-spacing: 1px;
+  margin-bottom: 12px;
+}
+.mark {
+  font-style: italic;
+  color: #5a4632;
+  background: #ece1cd;
+  border-left: 3px solid #a58d5f;
+  padding: 8px 12px;
+  margin: 8px 0;
+  transform: rotate(-0.6deg);
+}
+.site-canon {
+  color: #6b5744;
+  font-variant: small-caps;
+  letter-spacing: 0.5px;
+  margin: 10px 0;
+}
+.event { margin-top: 20px; border-top: 1px solid #d8cdb8; padding-top: 12px; }
+.event h3 {
+  font-size: 13px;
+  text-transform: uppercase;
+  letter-spacing: 2px;
+  color: #8a7a5f;
+}
+.event-canon { margin: 6px 0 10px; font-weight: bold; }
+.testimony { margin: 10px 0; }
+.testimony-author {
+  display: block;
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 1.5px;
+  color: #b8552f;
+  margin-bottom: 2px;
+}
+.testimony.empty p { font-style: italic; color: #a39680; }
+
+/* scrubber */
+.scrubber {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: 52px;
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 0 20px;
+  background: rgba(34, 48, 60, 0.92);
+  color: #dfe9f0;
+}
+.scrubber-label {
+  font-variant: small-caps;
+  letter-spacing: 2px;
+  white-space: nowrap;
+}
+.scrubber input { flex: 1; accent-color: #b8552f; }
