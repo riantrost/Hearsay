@@ -1,0 +1,15 @@
+{
+  "name": "Hearsay — Living Campaign Record",
+  "short_name": "Hearsay",
+  "description": "A living record of tabletop campaigns: plural memory, pinned to the place it happened.",
+  "start_url": "./index.html",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "any",
+  "background_color": "#14110d",
+  "theme_color": "#14110d",
+  "icons": [
+    { "src": "./icons/icon.svg", "type": "image/svg+xml", "sizes": "any", "purpose": "any" },
+    { "src": "./icons/maskable.svg", "type": "image/svg+xml", "sizes": "any", "purpose": "maskable" }
+  ]
+}
