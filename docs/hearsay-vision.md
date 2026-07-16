@@ -1,6 +1,6 @@
 # Hearsay — Living Campaign Tracker
 
-**Status:** Second draft — working title locked (2026-07-16), core forks settling
+**Status:** Third draft — validation closed (2026-07-16), build gate open; pin/event split and marks settled
 **Origin:** Sibling concept to Fragments (and Litany before it) — same mission, different table
 **Mission (unchanged from the family):** protect the ritual of play
 **First validation table:** a Frostgrave campaign (see The Validation Question)
@@ -37,13 +37,17 @@ The GM owns the world: the map itself, regions, named locations, the larger stor
 - **Painted fog (the true fog-of-war option):** the GM masks regions of the map image itself; players see terra incognita — darkened, clouded, or blank — until the GM unmasks it. Unmasking is coarse and gestural (paint a region, not pixel-perfect erasing), and each unmask is a timeline event like any reveal.
 - **Declined: automatic reveal-by-travel** (fog that lifts in a radius around party positions). It implies the app is simulating movement, which drags in position tracking, travel rates, and a real-time-ness that belongs to VTTs. Fog in Hearsay is narrative disclosure, GM-authored, not line-of-sight math.
 
-### 2. Events — the shared skeleton
-An event is a pin on the map bound to a session: *a battle happened here, in session 12*. Events are the spine everything hangs on. The GM drops the pin (they know where the party actually was — this keeps canon geography in one pair of hands), and a fresh pin arrives as an **open jack**: a visible invitation awaiting each player's entry. An event with four players attached shows four slots; unwritten ones sit quietly empty, forever fillable, never nagging.
+### 2. Pins and events — the shared skeleton
+A **pin is a place**; **events accumulate at it** (settled 2026-07-16). The GM drops the pin once — they know where things actually happened, keeping canon geography in one pair of hands — and events bind to it session over session: *a battle happened here in session 5, and another in session 9*. The lineage of a site is the value: revisited terrain is one pin deepening, not a pile of pins needing cluster UI, and "what happened here first?" is a question the record answers natively. Each new event arrives as an **open jack**: a visible invitation awaiting each participating player's entry. An event with four players attached shows four slots; unwritten ones sit quietly empty, forever fillable, never nagging.
+
+**Site canon accretes from history.** The owner can leave a line the environment remembers — the rotting soldier from session 5's battle, inherited as ambience by session 9's — one line, couch-compatible, same cost discipline as the pin drop. Guard: site canon is only ever *what events left behind*; a site described before anything happened there is the worldbuilding-wiki page Hearsay refuses.
 
 ### 3. Testimony — the players' layer
 Each player writes their own journal entry per event, from their character's perspective. Testimony is **immutable by anyone but its author** — the GM curates *placement* and *visibility* of events, never the words. Contradiction between testimonies is not an error state; it is the most interesting thing the app can display. Two players remembering the same ambush differently *is* the artifact. There is no merge, no canonical summary that flattens the voices, no editing each other. (Fragments cut merge because it only made sense for text; here merge is cut because it would destroy the plurality that makes the record worth keeping.)
 
 **Visibility is a GM setting, open by default (settled 2026-07-16).** Players read each other's testimony freely — the plural-memory thesis at full strength — unless the GM seals it: per-campaign (testimony private until the campaign concludes) or per-entry (a sealed slot for tables that run secrets between players). Sealing is disclosure control, same family as fog; it never grants editing.
+
+**Marks — testimony left in the world (settled 2026-07-16).** A player may promote one line of an event's testimony into a **mark**: graffiti surfaced on the pin itself, the Dark Souls player-note brought to the campaign map. Not a new content type — the ritual stays one journal entry; the mark is a highlight pulled from it. Earned by presence (only where you have testimony), immutable like testimony, possibly false (a lying mark is just subjective testimony). Marks show **unattributed at a glance** — "someone scrawled here: …" — authorship discoverable only through the source testimony: you hear the words before you know the mouth. Hard brevity cap (one sentence, ~100 characters), the app's one ceiling where everywhere else a sentence is a floor. No replies — a mark can be outlasted, never answered. Marks inherit their event's session stamp, so the scrubber shows graffiti appearing when it was scrawled.
 
 ### The warband layer (players describing themselves)
 Alongside per-event testimony, each player owns a **warband page** (or character page — the unit depends on the system): a self-authored description of who they're fielding, in their own voice. Unlike testimony, the warband page is a **living document** — the roster changes, soldiers die, the wizard learns things — its author edits it freely, and that's honest to what it describes. What keeps history from vanishing: the session scrubber snapshots it, so the warband page as it stood at session 4 is part of session 4's record. No stats, no points math, no roster validation — that's rules content, refused below; this is the *description*, the thing you'd say when someone asks "who are you playing?"
@@ -94,14 +98,16 @@ The concept lives or dies on players actually writing, so the ritual is designed
 
 1. **Painted fog scope for v1.** Hidden pins are free (visibility flag); painted fog needs a mask-authoring surface and mask rendering. Is it v1 or the first post-validation feature? Leaning: hidden pins v1, painted fog immediately behind it — it's the feature GMs will ask for by name.
 2. **Warband snapshot granularity.** Snapshot the warband page every session, or only on edit? Only-on-edit is cheaper and honest (an unchanged page needs no copy); per-session gives the scrubber a uniform clock. Leaning: on-edit, stamped with the current session.
-3. **Competitive testimony in GM-less play.** Frostgrave battles are player-vs-player: both sides of the same battle write testimony about *each other*. Does the open-by-default visibility need a "sealed until both have written" option so the second writer isn't shaped by the first? Small feature, real integrity question. Unresolved — the Frostgrave test will answer it from behavior.
+3. **Competitive testimony in GM-less play.** Frostgrave battles are player-vs-player: both sides of the same battle write testimony about *each other*. Does the open-by-default visibility need a "sealed until both have written" option so the second writer isn't shaped by the first? Small feature, real integrity question. Unresolved — answer it from live behavior once the Frostgrave table is on the built tool (the paper test was closed without running; see The Validation Question).
 4. **What the archive looks like from outside.** Concluded campaigns need a shelf — the family instinct says the shelf shows each campaign as its map thumbnail, dense with its pins (identity-is-the-shape, the patchbay lesson). Not designed yet.
 
 ---
 
 ## The Validation Question
 
-The unvalidated hypothesis — Hearsay's version of "do creators enjoy contributing to unfinished fragments?" — is: **will players write testimony without being nagged?** GMs demonstrably keep records (every campaign wiki ever); player-side, per-perspective logging is the unproven behavior, and everything distinctive here depends on it.
+**Closed as validated (2026-07-16), without running the paper test.** The hypothesis — Hearsay's version of "do creators enjoy contributing to unfinished fragments?" — was: **will players write testimony without being nagged?** The table's local Discord already answers it in the wild: players post their own accounts of battles, unnagged, in their own voices. The behavior exists; what's missing is tooling that makes it easy at the tabletop and keeps what's written. Build proceeds. The behavioral sub-questions the test was meant to settle (competitive sealing, marks uptake) move to the live Frostgrave campaign on the built tool.
+
+The original framing, kept for the record: GMs demonstrably keep records (every campaign wiki ever); player-side, per-perspective logging was the unproven behavior, and everything distinctive here depends on it.
 
 **The first test table is a Frostgrave campaign (2026-07-16)** — and that's a deliberately hard test, not a soft one. Frostgrave is a competitive skirmish campaign: warbands clash *against each other*, often without a GM, so it stresses the canon layer (owner-who-also-plays), the warband page (rosters that change every game — soldiers die constantly in Frostgrave), and testimony at its most interesting — two opposing players writing rival accounts of the same battle. If plural memory works anywhere, it works where the perspectives literally fought each other; hearsay from both sides of a battle is the name earning itself.
 
