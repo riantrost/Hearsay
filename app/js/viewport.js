@@ -4,10 +4,11 @@
 // works in normalized [0..1] map coordinates and never sees screen pixels.
 
 export class Viewport {
-  constructor(frame, world, { onTap } = {}) {
+  constructor(frame, world, { onTap, onTransform } = {}) {
     this.frame = frame;     // the clipping/overflow container (screen space)
     this.world = world;     // the transformed element (image-pixel space)
     this.onTap = onTap;     // (normX, normY, screenEvent) => void
+    this.onTransform = onTransform; // (scale) => void — fires whenever the view transform changes
     this.scale = 1;
     this.tx = 0;
     this.ty = 0;
@@ -39,6 +40,7 @@ export class Viewport {
   _apply() {
     this.scale = Math.max(this.min, Math.min(this.max, this.scale));
     this.world.style.transform = `translate(${this.tx}px, ${this.ty}px) scale(${this.scale})`;
+    if (this.onTransform) this.onTransform(this.scale);
   }
 
   // screen point -> normalized map coordinate

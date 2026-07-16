@@ -156,6 +156,32 @@ h1, h2, h3 { font-family: var(--serif); font-weight: 600; letter-spacing: .2px; 
   touch-action: none; cursor: grab;
 }
 .mapframe:active { cursor: grabbing; }
+.mapframe--placing, .mapframe--placing:active { cursor: crosshair; }
+.mapframe--placing::after {
+  content: ''; position: absolute; inset: 0; pointer-events: none; z-index: 4;
+  box-shadow: inset 0 0 0 2px rgba(201,146,46,.55);
+}
+
+/* Floating "tap where it happened" prompt, shown only while a drop is armed. */
+.placebar {
+  position: absolute; left: 50%; top: 12px; transform: translate(-50%, -8px);
+  z-index: 5; display: none; align-items: center; gap: 10px;
+  padding: 8px 10px 8px 14px; border-radius: 999px;
+  background: rgba(34,29,22,.94); border: 1px solid var(--line);
+  box-shadow: 0 8px 24px -8px rgba(0,0,0,.7); font-size: 13px; color: var(--ink);
+  opacity: 0; transition: opacity .16s ease, transform .16s ease;
+}
+.placebar--show { display: flex; opacity: 1; transform: translate(-50%, 0); }
+.placebar__dot {
+  width: 9px; height: 9px; border-radius: 50%; background: var(--accent);
+  box-shadow: 0 0 0 4px rgba(201,146,46,.22); animation: ripple 1.6s ease-out infinite;
+}
+.placebar__cancel {
+  border: none; background: rgba(255,255,255,.08); color: var(--ink-dim);
+  font: inherit; padding: 4px 10px; border-radius: 999px; cursor: pointer;
+}
+.placebar__cancel:hover { background: rgba(255,255,255,.14); color: var(--ink); }
+.btn--drop.btn--active { background: var(--accent); color: #1a140a; border-color: var(--accent); }
 .world { position: absolute; top: 0; left: 0; transform-origin: 0 0; will-change: transform; }
 .world--nomap { background: transparent; }
 .world__img { display: block; width: 100%; height: 100%; user-select: none; -webkit-user-drag: none;
@@ -172,27 +198,33 @@ h1, h2, h3 { font-family: var(--serif); font-weight: 600; letter-spacing: .2px; 
 .mapdrop__inner p { color: var(--ink-dim); }
 
 /* ---- pins --------------------------------------------------------------- */
+/* --pin-k is set per-frame from the viewport scale (campaign.js) so pins hold a
+   roughly constant screen size at any zoom. Base size is generous so pins stay a
+   comfortable tap target and readable over busy map art. */
 .pin {
-  position: absolute; transform: translate(-50%, -50%);
-  width: 30px; height: 30px; padding: 0; border: none; background: none; cursor: pointer;
-  display: grid; place-items: center; filter: drop-shadow(0 3px 4px rgba(0,0,0,.6));
+  position: absolute; transform: translate(-50%, -50%) scale(var(--pin-k, 1));
+  width: 38px; height: 38px; padding: 0; border: none; background: none; cursor: pointer;
+  display: grid; place-items: center; filter: drop-shadow(0 3px 5px rgba(0,0,0,.7));
+  transition: transform .08s ease;
 }
 .pin__ring {
   position: absolute; inset: 0; border-radius: 50%;
-  background: conic-gradient(var(--accent) calc(var(--frac, 0) * 360deg), rgba(255,255,255,.14) 0);
-  -webkit-mask: radial-gradient(circle, transparent 8px, #000 9px);
-          mask: radial-gradient(circle, transparent 8px, #000 9px);
+  background: conic-gradient(var(--accent) calc(var(--frac, 0) * 360deg), rgba(255,255,255,.16) 0);
+  -webkit-mask: radial-gradient(circle, transparent 10px, #000 11px);
+          mask: radial-gradient(circle, transparent 10px, #000 11px);
 }
 .pin__core {
-  width: 15px; height: 15px; border-radius: 50%; z-index: 1;
-  box-shadow: 0 0 0 2px rgba(20,17,13,.9);
+  width: 18px; height: 18px; border-radius: 50%; z-index: 1;
+  /* Double outline — dark then light — so the core survives against any map colour. */
+  box-shadow: 0 0 0 2px rgba(20,17,13,.92), 0 0 0 3.5px rgba(255,255,255,.55);
 }
 .pin__badge {
-  position: absolute; bottom: -8px; right: -8px; z-index: 2;
-  font-size: 9.5px; font-weight: 700; line-height: 1; padding: 2px 4px; border-radius: 6px;
+  position: absolute; bottom: -9px; right: -9px; z-index: 2;
+  font-size: 10.5px; font-weight: 700; line-height: 1; padding: 2px 5px; border-radius: 6px;
   background: var(--panel); color: var(--ink-dim); border: 1px solid var(--line);
+  box-shadow: 0 1px 3px rgba(0,0,0,.5);
 }
-.pin:hover { transform: translate(-50%, -50%) scale(1.14); }
+.pin:hover { transform: translate(-50%, -50%) scale(calc(var(--pin-k, 1) * 1.14)); z-index: 3; }
 .pin--staged { opacity: .6; }
 .pin--staged .pin__core { box-shadow: 0 0 0 2px rgba(20,17,13,.9), 0 0 0 4px rgba(216,178,90,.35); outline: 2px dashed var(--accent); outline-offset: 2px; }
 .pin--fresh .pin__core { animation: pop .5s ease; }

@@ -1,7 +1,15 @@
 # Hearsay — Session Handoff
 *Start any new development session from this doc + docs/hearsay-vision.md.*
 
-## Project state (2026-07-16, second session — first code)
+## Project state (2026-07-16, third session — UX pass + backend prep)
+- **UX pass on the map surface (this session, shipped on `claude/supabase-ux-feedback-metw3t`).** Two of Rian's usability notes, both verified end-to-end with a headless driver (11/11, no console errors): (1) **pin placement is now deliberate** — the owner arms "＋ Pin" and the next tap places, so ordinary taps only pan/zoom and a mis-tap can't mint canon (was: any near-stationary tap opened the editor); (2) **pins hold a constant, legible screen size at any zoom** via a `--pin-k` counter-scale fed from the viewport transform, plus a dark+light double outline and larger tap target. Both pinned in [decisions.md](decisions.md).
+- **Player-suggested pins: model designed, build deferred to Supabase (this session).** A player may *propose* a pin; the owner authors canon from it (adopt-and-edit: acceptance opens the event editor pre-filled). Pending proposals are proposer+owner only. Modeled as a **separate `proposals` axis** (never entangled with `hidden`/fog); accepted events carry `proposedBy` provenance. Shape for the next builder:
+  ```
+  state.proposals = [{ id, by: playerId, x, y, name, type, note, session,
+                       status: 'pending'|'accepted'|'declined', createdAt, decidedAt }]
+  ```
+  Supabase/RLS target: `pins` = owner-only writes; `pin_proposals` = member owns their own row, owner-only status updates. This is the concrete reason the backend is the next rung — it's the first capability that only becomes real across devices. Fork pinned in [decisions.md](decisions.md).
+- **Competitive scan run (this session).** Surveyed VTTs (Owlbear, Foundry, Roll20, Alchemy) and worldkeepers (World Anvil, Kanka, LegendKeeper, Obsidian+Leaflet, Azgaar). Headline: *no surveyed tool centers per-seat testimony* — our thesis is an open lane, and our refusals (single-canon wiki, GM moderation, public/social, combat layer, streak loops) are validated as conscious skips. See "Next candidates" for what it surfaced.
 - **Prototype built: a portable, local-first PWA in [`app/`](../app/).** Buildless (static files, vanilla ES modules, no framework/bundler). The full core loop the vision names as load-bearing works end to end: map-as-browse-surface with pan/pinch-zoom, owner-dropped session-bound event pins carrying per-player *open jacks*, immutable per-seat testimony, the living warband page snapshotted by session, the **session scrubber** replaying the map's growth, and fog v1 (hidden pins + reveal-as-timeline-event). Identity-first seat picker, per-device. Data in IndexedDB; portable `.hearsay.json` export/import stands in for sync. Run/architecture notes in [`app/README.md`](../app/README.md).
 - **Verified with a headless-browser driver** (create → upload map → drop pin → write testimony → scrub): full flow runs clean (no console errors), and the scrubber/fog visibility rules pass explicit assertions (future pins hidden from all; staged pins hidden from players even in the past; owner sees staged). One real bug caught and fixed along the way: the viewport captured the pointer on every `pointerdown`, which swallowed pin taps — fixed by not capturing when the target is an interactive child.
 - **Concept designed (first session, 2026-07-16).** Full concept in [hearsay-vision.md](hearsay-vision.md); settled forks pinned in [decisions.md](decisions.md) — canon/testimony split, fog-as-disclosure tiers, grid-as-reference (hex/square/freeform), the living warband page, conclusion-by-GM-act-only (no mortality clock), and now the local-first-prototype scope fork.
@@ -16,6 +24,12 @@
 ## Next candidates (not yet forks)
 1. **The pre-build validation test:** run Rian's Frostgrave campaign for 3–4 sessions on a shared image + numbered pins + a doc per player. The hypothesis everything hinges on: players write testimony unnagged. This gates the build, per decisions.md's validation paragraph.
 2. **Prototype scope sketch** once the test signals: the map viewport (an image + normalized-coordinate pins + pan/zoom — Fragments' `src/tree/viewport.ts` gestures are the same interaction), the pin/slot data model, and the session scrubber — named in the vision doc as the single most important interaction to get right.
+3. **Surfaced by the competitive scan, ranked by leverage:**
+   - **Testimony juxtaposition** `[do-now, no backend]` — two+ seats' accounts of the same pin side by side, contradictions visible. The scan's strongest point: *absent from every competitor* because none center plural memory; it's what makes "plural memory is the artifact" legible rather than merely stored. Highest-value next build; pure UI over data already modeled. (Rian confirmed it's the lead candidate but deferred building it past this session.)
+   - **Pin clustering + spiderfy** `[do-now, no backend]` — same-coordinate pins stacked across sessions must fan out on zoom, or the map stops being browsable as a campaign matures. The real completion of this session's legibility work.
+   - **Three-state fog** (hidden / *sensed* / revealed, reveal as a scrubber event) `[with-backend]` — richens fog v1's binary from Foundry's "Limited" tier + World Anvil's unlock-as-event.
+   - **Per-seat timeline lanes** in the scrubber `[with-backend]` — watch each player's testimony thread advance in parallel (World Anvil Chronicles' lanes, recast for plural memory).
+   - **Player-suggested pins** `[with-backend]` — the proposal model above, built once Supabase exists.
 
 ## Open design questions (from the vision doc)
 - Painted fog: v1 or first post-validation feature? (Hidden pins are v1 either way.)
