@@ -12,10 +12,12 @@ import * as P from './panels.js';
 let vp = null;
 let viewSession = null;      // the scrubber position; null == "now"
 let objectURL = null;        // revoked on teardown
+let placing = false;         // owner is in deliberate pin-placement mode
 let refs = {};
 
 export async function renderCampaign(state, { onHome }) {
   viewSession = state.currentSession;
+  placing = false;
 
   const frame = el('div', { class: 'mapframe', id: 'mapframe' });
   const world = el('div', { class: 'world', id: 'world' });
@@ -25,7 +27,18 @@ export async function renderCampaign(state, { onHome }) {
   world.append(img, gridCanvas, pinLayer);
   frame.appendChild(world);
 
+  // Floating prompt shown only while the owner is arming a pin drop.
+  const placeBar = el('div', { class: 'placebar' }, [
+    el('span', { class: 'placebar__dot' }),
+    el('span', { text: 'Tap the map where it happened' }),
+    el('button', { class: 'placebar__cancel', text: 'Cancel', onclick: () => setPlacing(state, false, { onHome }) }),
+  ]);
+  frame.appendChild(placeBar);
+
   const banner = el('div', { class: 'scrub-banner', id: 'scrubBanner' });
+
+  // Populate refs before building the top bar, which stashes refs.placeBtn as it goes.
+  refs = { frame, world, img, gridCanvas, pinLayer, banner, placeBar };
 
   const screen = el('div', { class: 'campaign' }, [
     topBar(state, { onHome }),
@@ -36,18 +49,28 @@ export async function renderCampaign(state, { onHome }) {
   ]);
   mount(screen);
 
-  refs = { frame, world, img, gridCanvas, pinLayer, banner };
-
   // Seat gate: identity-first. No seat chosen on this device → pick one.
   if (!S.getIdentity(state.id)) {
     P.openSeatPicker(state, () => rerenderChrome(state, { onHome }));
   }
 
   vp = new Viewport(frame, world, {
+    // Placement is a deliberate mode, not a side effect of touching the map: an
+    // ordinary tap only pans/zooms. The owner arms "Drop pin" first, then the next
+    // tap places — one pin, then the mode disarms.
     onTap: (x, y) => {
+      if (!placing) return;
       if (state.map && S.getIdentity(state.id) === 'owner' && !state.concluded) {
         P.openEventEditor(state, { x, y }, () => paint(state));
       }
+      setPlacing(state, false, { onHome });
+    },
+    // Pins live inside the scaled world, so without this they'd shrink to specks
+    // when zoomed out and balloon when zoomed in. Counter-scale keeps them a roughly
+    // constant, legible screen size at any zoom.
+    onTransform: (scale) => {
+      const k = Math.max(0.5, Math.min(2.4, 1 / scale));
+      refs.pinLayer.style.setProperty('--pin-k', k.toFixed(3));
     },
   });
 
@@ -131,6 +154,19 @@ function paint(state) {
   }
 }
 
+// Arm or disarm deliberate pin placement. While armed: a crosshair over the map,
+// a floating prompt, and the "Drop pin" button reads as active. The next map tap
+// (or Cancel) disarms it.
+function setPlacing(state, on, ctx) {
+  placing = !!on && S.getIdentity(state.id) === 'owner' && !state.concluded && !!state.map;
+  refs.frame.classList.toggle('mapframe--placing', placing);
+  refs.placeBar.classList.toggle('placebar--show', placing);
+  if (refs.placeBtn) {
+    refs.placeBtn.classList.toggle('btn--active', placing);
+    refs.placeBtn.textContent = placing ? '✕ Cancel' : '＋ Pin';
+  }
+}
+
 // ---- grid overlay (reference only) ----------------------------------------
 
 function drawGrid(state) {
@@ -181,6 +217,10 @@ function topBar(state, ctx) {
       state.concluded ? el('span', { class: 'tag tag--archived', text: 'Archived' }) : null,
     ]),
     el('div', { class: 'topbar__spacer' }),
+    isOwner && !state.concluded && state.map
+      ? (refs.placeBtn = el('button', { class: 'btn btn--sm btn--drop', title: 'Drop an event pin',
+          text: '＋ Pin', onclick: () => setPlacing(state, !placing, ctx) }))
+      : null,
     isOwner && !state.concluded ? el('button', { class: 'btn btn--sm', title: 'Advance the clock',
       text: 'Session ' + state.currentSession + '  +', onclick: () => { S.advanceSession(); viewSession = state.currentSession; rerender(state, ctx); } })
       : el('span', { class: 'pill', text: 'Session ' + state.currentSession }),
@@ -248,7 +288,7 @@ function emptyHint(state) {
   const isOwner = S.getIdentity(state.id) === 'owner';
   if (state.events.length) return null;
   return el('div', { class: 'hint' , text: isOwner
-    ? (state.map ? 'Tap the map to drop your first event pin.' : 'Add a world map in Settings, then tap to drop pins.')
+    ? (state.map ? 'Hit “＋ Pin”, then tap the map to drop your first event.' : 'Add a world map in Settings, then drop pins where things happened.')
     : 'No events yet — the owner drops pins where things happened.' });
 }
 
