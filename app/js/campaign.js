@@ -4,7 +4,8 @@
 // that replays the map's growth. Panels (pin detail, warband, settings) live in panels.js.
 
 import * as S from './state.js';
-import { el, clear, mount, toast } from './ui.js';
+import * as Sync from './sync.js';
+import { el, clear, mount, toast, openSheet } from './ui.js';
 import { Viewport } from './viewport.js';
 import { pickImage } from './util.js';
 import * as P from './panels.js';
@@ -13,9 +14,13 @@ let vp = null;
 let viewSession = null;      // the scrubber position; null == "now"
 let objectURL = null;        // revoked on teardown
 let refs = {};
+let pendingTransform = null; // preserve pan/zoom across a remote-driven re-render
+let lastCtx = null;
 
-export async function renderCampaign(state, { onHome }) {
+export async function renderCampaign(state, ctx) {
+  lastCtx = ctx;
   viewSession = state.currentSession;
+  const onHome = ctx.onHome;
 
   const frame = el('div', { class: 'mapframe', id: 'mapframe' });
   const world = el('div', { class: 'world', id: 'world' });
@@ -28,7 +33,7 @@ export async function renderCampaign(state, { onHome }) {
   const banner = el('div', { class: 'scrub-banner', id: 'scrubBanner' });
 
   const screen = el('div', { class: 'campaign' }, [
-    topBar(state, { onHome }),
+    topBar(state, ctx),
     frame,
     banner,
     scrubber(state),
@@ -40,7 +45,7 @@ export async function renderCampaign(state, { onHome }) {
 
   // Seat gate: identity-first. No seat chosen on this device → pick one.
   if (!S.getIdentity(state.id)) {
-    P.openSeatPicker(state, () => rerenderChrome(state, { onHome }));
+    P.openSeatPicker(state, () => renderCampaign(S.getState(), ctx));
   }
 
   vp = new Viewport(frame, world, {
@@ -63,7 +68,7 @@ async function loadMap(state) {
     world.classList.add('world--nomap');
     img.removeAttribute('src');
     vp.setWorldSize(frame.clientWidth || 800, frame.clientHeight || 600);
-    vp.fit();
+    applyView();
     renderMapDrop(state);
     return;
   }
@@ -78,7 +83,30 @@ async function loadMap(state) {
   gridCanvas.height = state.map.h;
   drawGrid(state);
   await new Promise(r => { if (img.complete) r(); else img.onload = r; });
-  vp.fit();
+  applyView();
+}
+
+// Fit to the frame, unless a remote-driven re-render asked us to keep the current view.
+function applyView() {
+  if (pendingTransform) {
+    vp.scale = pendingTransform.scale; vp.tx = pendingTransform.tx; vp.ty = pendingTransform.ty;
+    vp._apply();
+    pendingTransform = null;
+  } else {
+    vp.fit();
+  }
+}
+
+// Called when a realtime change arrives: re-read the cloud, keep the viewport, repaint.
+export async function refreshCampaignView() {
+  const st = S.getState();
+  if (!st || !st.cloud || !lastCtx) return;
+  try {
+    const fresh = await Sync.fetchCampaign(st.cloud.remoteId);
+    pendingTransform = vp ? { scale: vp.scale, tx: vp.tx, ty: vp.ty } : null;
+    S.applyRemote(fresh);
+    await renderCampaign(S.getState(), lastCtx);
+  } catch (e) { /* transient; the next event will retry */ }
 }
 
 function renderMapDrop(state) {
@@ -193,8 +221,10 @@ function menuButton(state, ctx) {
   const items = [
     ['Warbands', () => openWarbandList(state)],
     ['Settings', () => P.openSettings(state, () => rerender(state, ctx))],
-    ['Export campaign', () => exportNow(state)],
   ];
+  if (state.cloud) items.push(['Share join code', () => shareCode(state)]);
+  else if (Sync.cloudConfigured()) items.push(['Publish to cloud', () => publishFlow()]);
+  items.push(['Export campaign', () => exportNow(state)]);
   const menu = el('div', { class: 'menu' }, items.map(([label, fn]) =>
     el('button', { class: 'menu__item', text: label, onclick: () => { menu.classList.remove('menu--open'); fn(); } })));
   const wrap = el('div', { class: 'menuwrap' }, [
@@ -203,6 +233,31 @@ function menuButton(state, ctx) {
   ]);
   document.addEventListener('click', () => menu.classList.remove('menu--open'));
   return wrap;
+}
+
+async function publishFlow() {
+  try {
+    toast('Publishing to the cloud…');
+    const res = await S.publishCurrent();
+    if (!res) return;
+    location.hash = 'c/' + res.localId;   // localId is now the remote id; route re-opens + subscribes
+    shareCode(S.getState());
+  } catch (e) { toast('Publish failed: ' + (e.message || e)); }
+}
+
+function shareCode(state) {
+  const code = (state.cloud && state.cloud.joinCode) || S.joinCode() || '—';
+  const body = el('div', {}, [
+    el('p', { class: 'muted', style: { marginTop: 0 },
+      text: 'Anyone at the table taps “Join a campaign” on the home screen and enters this code to get the campaign live on their device.' }),
+    el('div', { class: 'joincode', text: code }),
+    el('div', { class: 'row row--end' }, [
+      el('button', { class: 'btn btn--primary', text: 'Copy code', onclick: () => {
+        (navigator.clipboard?.writeText(code) || Promise.resolve()).then(() => toast('Code copied'));
+      } }),
+    ]),
+  ]);
+  openSheet('Join code', body);
 }
 
 function openWarbandList(state) {

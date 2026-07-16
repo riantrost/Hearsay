@@ -58,17 +58,33 @@ The core loop the vision names as load-bearing, end to end:
 | `app.js` | bootstrap + a two-route hash router + service-worker registration |
 
 State persists in IndexedDB. **Export** writes a portable `.hearsay.json` (map image
-inlined) that another device can **import** — the prototype's stand-in for sync.
+inlined) that another device can **import** — the offline stand-in for sync.
 
-## What this prototype is *not* yet
+## Sync (cloud mode) — optional, off by default
 
-Deliberately deferred so the validation test isn't blocked on plumbing:
+Fill `config.js` with a Supabase project's URL + anon key and the app grows a live
+sync layer while staying a static PWA on Pages (no server to host). Setup:
+[`../supabase/README.md`](../supabase/README.md).
 
-- **No backend / no real-time sync.** Data is per-device; the table hands campaigns
-  around by exporting/importing the file. Multiplayer sync is the next roadmap rung
-  and the first thing that needs a server.
+- **`sync.js`** is the whole cloud surface (the rest of the app barely knows it exists).
+  Anonymous auth gives each device a stable identity with no email; a 6-char **join code**
+  is how the table joins a campaign.
+- **The canon/testimony split is enforced by the database**, not the app — row-level
+  security in [`../supabase/schema.sql`](../supabase/schema.sql). The owner writes canon;
+  each player writes only their own testimony/warband; hidden pins and sealed testimony
+  never leave the server. Fog and sealing are *read* rules.
+- **Local-first survives:** IndexedDB stays the cache; a campaign can be local-only or
+  published. Publishing re-keys ids to the shared cloud space; joining pulls the campaign
+  and subscribes to live changes. Conflicts are last-write-wins (the data partitions by
+  owner/author, so collisions are rare).
+- With `config.js` blank, none of this activates — the app is exactly the local-first
+  app above.
+
+## Still deferred (not refused)
+
 - **No painted fog, no map-grows-at-the-edges, no archive shelf polish.** All named in
   the vision; none required to answer *will players write testimony unnagged?*
-- **No auth.** Seats are a local choice, honest for a closed table testing the idea.
+- **Offline *editing* of cloud campaigns** isn't queued yet (reads come from cache; writes
+  want a connection). Full offline-merge is a later luxury.
 
 The refusals hold: not a VTT, no rules content, no wiki, no AI summarization.

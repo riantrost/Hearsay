@@ -291,7 +291,15 @@ select.input { appearance: none; }
 }
 .seat:hover { background: var(--panel-2); border-color: var(--canon); }
 .seat--owner { border-color: #5a4a24; }
+.seat--taken { opacity: .5; cursor: not-allowed; }
+.seat--taken:hover { background: var(--bg-2); border-color: var(--line); }
 .seat__dot { width: 14px; height: 14px; border-radius: 50%; box-shadow: 0 0 0 2px rgba(0,0,0,.4); flex: none; }
+
+.joincode {
+  font-family: var(--serif); font-size: 38px; font-weight: 600; letter-spacing: .22em;
+  text-align: center; color: var(--accent); padding: 18px; margin: 6px 0 4px;
+  background: var(--bg-2); border: 1px solid var(--line); border-radius: 12px;
+}
 
 /* ---- pin detail --------------------------------------------------------- */
 .pin-head__meta { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }

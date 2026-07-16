@@ -3,7 +3,8 @@
 // discovery — a campaign is as private as the table.
 
 import * as S from './state.js';
-import { el, mount, openSheet, closeSheet, toast, el as _el } from './ui.js';
+import * as Sync from './sync.js';
+import { el, mount, openSheet, closeSheet, toast } from './ui.js';
 
 export async function renderHome({ onOpen }) {
   const campaigns = await S.listCampaigns();
@@ -28,10 +29,37 @@ export async function renderHome({ onOpen }) {
       ...cards,
     ]),
     el('div', { class: 'home__foot' }, [
+      Sync.cloudConfigured()
+        ? el('button', { class: 'btn', text: 'Join a campaign…', onclick: () => joinFlow(onOpen) }) : null,
       el('button', { class: 'btn btn--ghost', text: 'Import a campaign file…', onclick: () => importFlow(onOpen) }),
     ]),
   ]);
   mount(screen);
+}
+
+function joinFlow(onOpen) {
+  const codeI = el('input', { class: 'input', placeholder: 'Join code (e.g. QK7M4P)', style: { textTransform: 'uppercase' } });
+  const status = el('p', { class: 'muted mini' });
+  const body = el('div', {}, [
+    el('p', { class: 'muted', style: { marginTop: 0 }, text: 'Ask the owner for the code shown under “Share join code”. The campaign appears live on this device.' }),
+    codeI, status,
+    el('div', { class: 'row row--end' }, [
+      el('button', { class: 'btn btn--primary', text: 'Join', onclick: async () => {
+        const code = codeI.value.trim();
+        if (!code) { codeI.focus(); return; }
+        status.textContent = 'Joining…';
+        try {
+          await Sync.init();
+          const remoteId = await Sync.joinByCode(code);
+          const fresh = await Sync.fetchCampaign(remoteId);
+          await S.adoptRemote(fresh);
+          closeSheet(); onOpen(remoteId);
+        } catch (e) { status.textContent = 'Could not join: ' + (e.message || e); }
+      } }),
+    ]),
+  ]);
+  openSheet('Join a campaign', body);
+  setTimeout(() => codeI.focus(), 50);
 }
 
 async function campaignCard(c, onOpen) {
@@ -56,7 +84,8 @@ async function campaignCard(c, onOpen) {
     el('div', { class: 'card__meta' }, [
       el('strong', { text: c.name }),
       el('span', { class: 'muted', text:
-        `${c.events?.length || 0} pin${(c.events?.length || 0) === 1 ? '' : 's'} · Session ${c.currentSession}` + (c.concluded ? ' · archived' : '') }),
+        `${c.events?.length || 0} pin${(c.events?.length || 0) === 1 ? '' : 's'} · Session ${c.currentSession}`
+        + (c.cloud ? ' · shared' : '') + (c.concluded ? ' · archived' : '') }),
     ]),
   );
   return card;

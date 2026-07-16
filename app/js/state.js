@@ -7,6 +7,7 @@
 // export doesn't carry one player's seat to everyone else's phone.
 
 import { db } from './db.js';
+import * as Sync from './sync.js';
 
 const SCHEMA = 1;
 const EVENT_TYPES = ['battle', 'discovery', 'loss', 'arrival', 'other'];
@@ -15,12 +16,23 @@ const PLAYER_COLORS = ['#e0524b', '#3f8cd6', '#4aa96c', '#c9922e', '#9163cb', '#
 let current = null;           // the open campaign state, or null
 const listeners = new Set();
 let saveTimer = null;
+let syncErr = () => {};       // set by app.js to surface push failures without coupling to the UI
+
+export function onSyncError(fn) { syncErr = fn; }
+
+// The remote id if the open campaign is cloud-backed, else null.
+function cloudId() { return current && current.cloud ? current.cloud.remoteId : null; }
+function push(promise) { if (promise && promise.catch) promise.catch(syncErr); }
 
 // ---- id + subscription plumbing -------------------------------------------
 
 function uid(prefix) {
   return prefix + '_' + Math.random().toString(36).slice(2, 9) + Date.now().toString(36).slice(-4);
 }
+
+// New row ids must be uuids once a campaign is cloud-backed (the server columns are uuid);
+// local-only campaigns keep the readable prefixed ids.
+function newId(prefix) { return cloudId() ? crypto.randomUUID() : uid(prefix); }
 
 export function subscribe(fn) {
   listeners.add(fn);
@@ -52,13 +64,68 @@ export function isOwner(campaignId) {
   return getIdentity(campaignId) === 'owner';
 }
 
+// Take a seat on this device. In cloud mode, claiming a player seat is a server act
+// (it binds this identity to the seat and adopts any testimony already in it).
+export async function takeSeat(playerId) {
+  if (cloudId() && playerId !== 'owner') {
+    await Sync.claimSeat(playerId);
+  }
+  setIdentity(current.id, playerId);
+}
+
 // ---- lifecycle -------------------------------------------------------------
 
 export function getState() { return current; }
 export const eventTypes = EVENT_TYPES;
 
 // Persist + notify after a caller mutates `current` in place (e.g. settings edits).
-export function commit() { touch(); }
+export function commit() {
+  touch();
+  const cid = cloudId();
+  if (cid) push(Sync.pushCampaignMeta(cid, {
+    name: current.name, sealing: current.sealing, grid: current.grid,
+    concluded: current.concluded, current_session: current.currentSession,
+  }));
+}
+
+// ---- cloud lifecycle (publish / join / live apply) -------------------------
+
+export function isCloud() { return !!cloudId(); }
+export function joinCode() { return current && current.cloud ? current.cloud.joinCode : null; }
+
+// Publish the open (local) campaign to the cloud, re-keying it to the remote id so every
+// device shares one identity space. Returns { remoteId, joinCode }.
+export async function publishCurrent() {
+  if (!current || current.cloud) return null;
+  const blob = await getMapBlob();
+  const oldId = current.id;
+  const seat = getIdentity(oldId) || 'owner';
+  const { remoteId, joinCode: code, newState } = await Sync.publish(current, blob);
+  current = newState;                       // id is now remoteId, cloud set, ids re-keyed
+  await db.putCampaign(current);
+  if (oldId !== current.id) {
+    await db.deleteCampaign(oldId);
+    localStorage.setItem('hearsay.identity.' + current.id, seat);
+  }
+  notify();
+  return { remoteId, joinCode: code, localId: current.id };
+}
+
+// Replace the open campaign with a freshly-fetched cloud copy (initial load + realtime).
+export function applyRemote(assembled) {
+  if (!assembled) return;
+  current = assembled;
+  db.putCampaign(current);
+  notify();
+}
+
+// Adopt a just-joined remote campaign as `current`, waiting for the local save so a
+// subsequent route (by id) finds it in IndexedDB.
+export async function adoptRemote(assembled) {
+  current = assembled;
+  await db.putCampaign(current);
+  notify();
+}
 
 export async function listCampaigns() {
   const all = await db.listCampaigns();
@@ -91,6 +158,7 @@ export async function createCampaign({ name, playerNames }) {
     sealing: 'open',                 // 'open' | 'until-conclusion'
     grid: { mode: 'freeform', size: 6, offsetX: 0, offsetY: 0 },
     map: null,                        // { imageId, w, h }
+    cloud: null,                      // { remoteId, joinCode } once published/joined
     players,
     events: [],
     testimony: {},                    // eventId -> playerId -> { text, updatedAt }
@@ -112,6 +180,8 @@ export async function setMapImage(blob, naturalW, naturalH) {
   await db.putImage(imageId, blob);
   current.map = { imageId, w: naturalW, h: naturalH };
   touch();
+  const cid = cloudId();
+  if (cid) push(Sync.pushMap(cid, blob, naturalW, naturalH));
 }
 
 export function getMapBlob() {
@@ -130,9 +200,11 @@ export function getImageForCard(campaign) {
 export function addPlayer(name) {
   if (!current) return;
   const i = current.players.length;
-  const p = { id: uid('p'), name: name.trim(), color: PLAYER_COLORS[i % PLAYER_COLORS.length] };
+  const p = { id: newId('p'), name: name.trim(), color: PLAYER_COLORS[i % PLAYER_COLORS.length] };
   current.players.push(p);
   touch();
+  const cid = cloudId();
+  if (cid) push(Sync.pushPlayer(cid, p));
   return p;
 }
 
@@ -146,11 +218,15 @@ export function setCurrentSession(n) {
   if (!current) return;
   current.currentSession = Math.max(1, Math.round(n));
   touch();
+  const cid = cloudId();
+  if (cid) push(Sync.pushCampaignMeta(cid, { current_session: current.currentSession }));
 }
 export function advanceSession() {
   if (!current) return;
   current.currentSession += 1;
   touch();
+  const cid = cloudId();
+  if (cid) push(Sync.pushCampaignMeta(cid, { current_session: current.currentSession }));
 }
 export function maxSession() {
   if (!current) return 1;
@@ -166,7 +242,7 @@ export function maxSession() {
 export function addEvent({ name, x, y, session, type, canon, slots, hidden }) {
   if (!current) return;
   const e = {
-    id: uid('e'),
+    id: newId('e'),
     name: name.trim() || 'Untitled event',
     x, y,
     session: session ?? current.currentSession,
@@ -179,6 +255,8 @@ export function addEvent({ name, x, y, session, type, canon, slots, hidden }) {
   };
   current.events.push(e);
   touch();
+  const cid = cloudId();
+  if (cid) push(Sync.pushEvent(cid, e));
   return e;
 }
 
@@ -188,6 +266,8 @@ export function updateEvent(id, patch) {
   if (!e) return;
   Object.assign(e, patch);
   touch();
+  const cid = cloudId();
+  if (cid) push(Sync.pushEvent(cid, e));
 }
 
 export function revealEvent(id) {
@@ -197,6 +277,8 @@ export function revealEvent(id) {
   e.hidden = false;
   e.revealSession = current.currentSession; // the reveal is itself a timeline event
   touch();
+  const cid = cloudId();
+  if (cid) push(Sync.pushEvent(cid, e));
 }
 
 export function deleteEvent(id) {
@@ -204,6 +286,8 @@ export function deleteEvent(id) {
   current.events = current.events.filter(e => e.id !== id);
   delete current.testimony[id];
   touch();
+  const cid = cloudId();
+  if (cid) push(Sync.pushEventDelete(id));
 }
 
 // Is an event on the map as of a given session, for a given viewer?
@@ -231,6 +315,8 @@ export function writeTestimony(eventId, playerId, text) {
     current.testimony[eventId][playerId] = { text: t, updatedAt: Date.now() };
   }
   touch();
+  const cid = cloudId();
+  if (cid) push(Sync.pushTestimony(cid, eventId, playerId, t));
 }
 
 // Can `viewer` read `authorId`'s testimony on this event?
@@ -266,6 +352,8 @@ export function writeWarband(playerId, text) {
   wb.current = next;
   current.warbands[playerId] = wb;
   touch();
+  const cid = cloudId();
+  if (cid) push(Sync.pushWarband(cid, playerId, wb.current, wb.snapshots));
 }
 
 // The warband as it stood at `session` (for the scrubber).
@@ -285,11 +373,15 @@ export function concludeCampaign() {
   if (!current) return;
   current.concluded = true;
   touch();
+  const cid = cloudId();
+  if (cid) push(Sync.pushCampaignMeta(cid, { concluded: true }));
 }
 export function reopenCampaign() {
   if (!current) return;
   current.concluded = false;
   touch();
+  const cid = cloudId();
+  if (cid) push(Sync.pushCampaignMeta(cid, { concluded: false }));
 }
 
 // ---- export / import (portable, image inlined) -----------------------------

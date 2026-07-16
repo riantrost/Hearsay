@@ -2,12 +2,13 @@
 // lives in IndexedDB (see js/db.js), never here; this only holds the static shell.
 // Bump CACHE when shipping new assets so clients pick them up.
 
-const CACHE = 'hearsay-shell-v1';
+const CACHE = 'hearsay-shell-v2';
 const SHELL = [
   './',
   './index.html',
   './styles.css',
   './manifest.webmanifest',
+  './config.js',
   './icons/icon.svg',
   './icons/maskable.svg',
   './js/app.js',
@@ -15,10 +16,12 @@ const SHELL = [
   './js/campaign.js',
   './js/panels.js',
   './js/state.js',
+  './js/sync.js',
   './js/db.js',
   './js/viewport.js',
   './js/ui.js',
   './js/util.js',
+  './vendor/supabase-js.js',
 ];
 
 self.addEventListener('install', (e) => {

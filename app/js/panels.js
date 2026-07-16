@@ -3,6 +3,7 @@
 // These read and mutate through state.js and re-render the map via a passed callback.
 
 import * as S from './state.js';
+import * as Sync from './sync.js';
 import { el, openSheet, closeSheet, toast, confirmDialog } from './ui.js';
 import { pickImage } from './util.js';
 
@@ -13,19 +14,32 @@ function fmtSession(n) { return 'Session ' + n; }
 // ---- seat picker (identity-first) -----------------------------------------
 
 export function openSeatPicker(state, onPicked) {
+  const cloud = !!state.cloud;
+  const meUid = cloud ? Sync.getUserId() : null;
+  const seatBtns = state.players.map(p => {
+    const takenByOther = cloud && p.claimedBy && p.claimedBy !== meUid;
+    return el('button', { class: 'seat' + (takenByOther ? ' seat--taken' : ''), disabled: takenByOther,
+      onclick: takenByOther ? null : () => pick(p.id) }, [
+      el('span', { class: 'seat__dot', style: { background: p.color } }),
+      el('span', {}, [el('strong', { text: p.name }), takenByOther ? el('span', { class: 'muted', text: ' · taken' }) : null]),
+    ]);
+  });
   const body = el('div', {}, [
     el('p', { class: 'muted', style: { marginTop: 0 },
-      text: 'Whose seat is this device? Testimony you write is signed by this seat — it stays on this device.' }),
+      text: cloud
+        ? 'Which seat is this device? You can only write the testimony of the seat you take.'
+        : 'Whose seat is this device? Testimony you write is signed by this seat — it stays on this device.' }),
     el('button', { class: 'seat seat--owner', onclick: () => pick('owner') }, [
       el('span', { class: 'seat__dot', style: { background: 'var(--canon)' } }),
       el('span', {}, [el('strong', { text: 'Campaign owner' }), el('span', { class: 'muted', text: ' · GM / canon' })]),
     ]),
-    ...state.players.map(p => el('button', { class: 'seat', onclick: () => pick(p.id) }, [
-      el('span', { class: 'seat__dot', style: { background: p.color } }),
-      el('span', {}, [el('strong', { text: p.name })]),
-    ])),
+    ...seatBtns,
   ]);
-  function pick(id) { S.setIdentity(state.id, id); closeSheet(); onPicked && onPicked(); }
+  async function pick(id) {
+    try { await S.takeSeat(id); }
+    catch (e) { toast('Could not take that seat: ' + (e.message || e)); return; }
+    closeSheet(); onPicked && onPicked();
+  }
   openSheet('Take a seat', body);
 }
 
