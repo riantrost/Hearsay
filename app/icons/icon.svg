@@ -1,0 +1,23 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+  <defs>
+    <linearGradient id="g" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#241d12"/>
+      <stop offset="1" stop-color="#14110d"/>
+    </linearGradient>
+    <linearGradient id="gold" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#e8cf7f"/>
+      <stop offset="1" stop-color="#c9922e"/>
+    </linearGradient>
+  </defs>
+  <rect width="512" height="512" rx="112" fill="url(#g)"/>
+  <g stroke="#3a3225" stroke-width="6" opacity="0.6">
+    <path d="M60 150 H452 M60 256 H452 M60 362 H452" fill="none"/>
+    <path d="M150 60 V452 M256 60 V452 M362 60 V452" fill="none"/>
+  </g>
+  <text x="256" y="330" font-family="Iowan Old Style, Palatino, Georgia, serif" font-size="300"
+        font-weight="600" text-anchor="middle" fill="#ece3d0">H</text>
+  <g transform="translate(340 150)">
+    <path d="M0 0 C-38 0 -60 26 -60 58 C-60 96 0 150 0 150 C0 150 60 96 60 58 C60 26 38 0 0 0 Z" fill="url(#gold)"/>
+    <circle cx="0" cy="54" r="22" fill="#14110d"/>
+  </g>
+</svg>

@@ -1,35 +1,49 @@
 # Hearsay — Session Handoff
-*Start any new development session from this doc + docs/hearsay-vision.md.*
+*Start any new development session from this doc + [hearsay-vision.md](hearsay-vision.md). Settled forks live in [decisions.md](decisions.md) — don't relitigate.*
 
-## Project state (2026-07-16, second session)
-- **Concept designed, validation closed, prototype scope agreed. No code yet.** Hearsay is a living record of tabletop campaigns: one shared world map per campaign accumulating **pins (places)** where **events accumulate**, each event carrying per-player journals (testimony) under the GM's canon ownership. Full concept in [hearsay-vision.md](hearsay-vision.md); thirteen settled forks pinned in [decisions.md](decisions.md) — newest: the testimony grace window closes on the table's clock (editable until the next session's first event lands).
-- **Second session settled three forks:** the **pin/event split** (a pin is a site, dropped once; battles stack on it; lineage is the value — the stacked-pins problem dissolved), **site canon accreting from history** (the owner's one line the environment remembers, guarded to only-what-events-left-behind), and **marks** (one line of testimony promoted to graffiti on the pin — unattributed at a glance, brevity-capped, possibly false, no replies).
-- **The validation question is closed as validated (2026-07-16), paper test skipped:** the table's local Discord already shows players writing battle accounts unnagged. Behavioral sub-questions (competitive sealing, marks uptake) move to the live campaign on the built tool.
-- **Moved out of Fragments' docs into this folder (2026-07-16).** Hearsay shares the family mission (protect the ritual of play) and conventions but no code or product decisions with Fragments; its forks pin here, never to Fragments' decisions file.
+## Project state (2026-07-17, fourth session — histories reconciled, V1 pinned)
+- **The two parallel prototypes are reconciled; the Vite line is the mainline** (fork pinned in decisions.md, "The mainline is the Vite prototype"). Cloud sessions had built a buildless local-first PWA while local sessions built the agreed Vite + TypeScript + Vitest prototype; the histories merged 2026-07-17 with the Vite line carrying forward. The spike lives at `docs/archive/local-first-pwa/` (history only — don't build on it), and its learnings are harvested: the deliberate-pin-placement fork, the proposal pattern, `--pin-k` constant-size pin rendering, the competitive-scan findings, and headless-driver verification.
+- **What runs today (`src/`, `npm run dev` / `npm test`):** map viewport with pan/zoom over a real map image (Lawrence's Northmarch), normalized-coordinate pins, a pin surface in progress, and a **Store that enforces the settled forks in code** — the testimony grace window (`canEdit` refuses once a later session's event lands), the marks brevity cap, append-only site canon, participant-only slots. localStorage stands in for the backend deliberately; **the Store's mutation surface is the shape of the eventual API.** Suite: 11 checks green (4 visibility + 7 store), `tsc` clean.
+- **The competitive scan (cloud session, banked):** no surveyed tool (VTTs: Owlbear, Foundry, Roll20, Alchemy; worldkeepers: World Anvil, Kanka, LegendKeeper, Obsidian+Leaflet) centers per-seat testimony — the thesis is an open lane. Its strongest finding, **testimony juxtaposition** (two seats' accounts of the same pin side by side), is the lead post-V1 candidate.
+- Concept, validation (closed 2026-07-16), and the family relationship (sibling of Litany, met only at its storefront) are all pinned in decisions.md.
 
-## Prototype scope (sketched 2026-07-16, agreed — build next)
-**Done means:** the Frostgrave table can run a real session night on it. Stack carried from Fragments: vanilla TypeScript + Vite + Vitest, no framework, Cloudflare Pages + Functions (storage per Fragments' `contrib/db.ts` pattern).
+## V1 requirements (the owner's, 2026-07-17)
+**Done means: the Frostgrave table runs a real session night on it, from their own phones, with fresh data.**
+1. **Recent activity is visible on the map** — pins with recent events read as alive at a glance (recency, open testimony slots). This is the vision's "pins carry visual state" line; no schema needed — it derives from session stamps.
+2. **Campaign Managers create a campaign** (name + map image) **and add players whenever they want.**
+3. **Players join active campaigns via the campaign's join code.**
+4. **Players can share the code onward; the owner approves.** A joiner is a *pending* member who can write immediately, visible only to themselves and the owner; approval makes their posts visible to the table. (Fork: "Membership follows the proposal pattern.")
+5. **Sessions update fast on every device, and the app can never pin itself stale.** Server-authoritative data, network-first fetch, refetch on focus, short poll while a pin is open; **no service worker in V1.** (Fork: "V1 is server-authoritative.")
 
-**In:**
-1. **Map viewport** — uploaded image, pan/pinch-zoom, normalized-coordinate pins (port Fragments' `src/tree/viewport.ts` interaction). Grid overlay rendering only (hex/square/freeform).
-2. **Pin surface** — the site page: events in session order, site canon lines, marks as found graffiti. The identity moment; gets a design pass, not just CRUD.
-3. **Event + testimony loop** — owner adds event (session + one canon line), slots per player, players write; mark = promote one sentence of own testimony, brevity cap enforced at promotion.
-4. **Session scrubber** — filter on the session stamp everything already carries, plus the drag control.
-5. **Hidden pins** — visibility flag + owner toggle.
-6. **Identity, table-cheap** — attributed, not authenticated: owner creates campaign → invite link → players claim a name (localStorage token, recoverable by re-invite). No accounts, no passwords. (Agreed 2026-07-16; prototype-level, not a pinned fork.)
+## V1 data model (five entities — simplified 2026-07-17)
+```
+Campaign   { id, name, mapImageUrl, mapW, mapH, currentSession, joinCode }
+Member     { id, campaignId, name, role: owner|player, status: active|pending }
+Pin        { id, campaignId, x, y, name, hiddenUntilSession? }
+Event      { id, pinId, session, canonLine, participantIds }
+Testimony  { id, eventId, memberId, session, text, markText? }
+```
+Down from seven: **Mark folds into `markText` on Testimony** (the fork's own words — a highlight, not a content type) and **SiteCanon defers out of V1 build scope** (the accretes-from-history design stays settled; it returns post-V1). Everything below Campaign carries a `session` stamp — that column is the scrubber, and recency illumination derives from it.
 
-**Out (deferred, not refused):** painted fog · warband pages + snapshots · sealing · map growth · archive shelf · event-type color grammar.
+## Roadmap to V1 (in order — next session starts at step 1)
+1. **Simplify the model in code** (`src/model.ts`, `src/store.ts`, tests): five entities per the block above — fold marks into `markText`, drop the SiteCanon table, add `joinCode`/`status`. Add tests pinning the pending-visibility rule (pending member's testimony visible to author + owner only).
+2. **Stand up the backend**: Cloudflare Pages Functions + storage (per Fragments' `contrib/db.ts` pattern). Endpoints mirror the Store's mutation surface — it was written as the API shape. Identity stays table-cheap: the join code mints a member token (localStorage, recoverable by re-invite); no accounts, no passwords.
+3. **Join + approval flow**: create campaign → owner seat; enter code → pending member; owner's approve/decline list; rotate code.
+4. **Freshness discipline**: network-first data fetch, refetch on focus, short poll while a pin surface is open. No service worker — verify none ships in the build output.
+5. **Port the spike's map UX** (reference: `docs/archive/local-first-pwa/js/`): armed "＋ Pin" placement, `--pin-k` counter-scale so pins hold legible size at any zoom.
+6. **Pin surface pass**: recency illumination (latest event session vs `currentSession`), open-slot jacks, testimony reading + writing + mark promotion. This is the identity moment — it gets a design pass, not just CRUD.
+7. **Session scrubber**: filter on the session stamp + drag control, marks appearing when scrawled.
+8. **Hidden pins**: visibility flag, owner toggle, reveal-as-event.
+9. **Deploy**: Cloudflare Pages preview project, `noindex`, with a served-hash verification step (Litany's fingerprint habit — trust the proof, not the success message).
 
-**Data model shape:** Campaign → Member · Pin → SiteCanon (append-only) · Pin → Event → Testimony → Mark (denormalizes pinId + session for map rendering). Everything below Campaign carries a `session` stamp — that column *is* the scrubber. Testimony editability closes on the table's clock — see the grace-window fork in [decisions.md](decisions.md).
+## Deferred past V1 (not refused)
+Testimony juxtaposition (lead candidate) · site canon returns · painted fog · warband pages + snapshots · sealing (answer from live behavior) · player-proposed pins (designed, fork pinned) · map growth · archive shelf · event-type color grammar · installability (only with a deliberately update-disciplined service worker).
 
-**Build order:** viewport → pin/event/testimony loop (ugly) → scrubber → pin surface design pass → hidden pins + invite flow. Scrubber deliberately before polish: if it doesn't feel like a story with ugly pins, polish won't save it.
-
-## Open design questions (from the vision doc)
-- Painted fog: v1 or first post-validation feature? (Hidden pins are v1 either way.)
-- Warband snapshot granularity — leaning on-edit with a session stamp.
-- Competitive sealing ("sealed until both sides have written") — answer from live behavior on the built tool.
+## Open design questions
+- Competitive sealing ("sealed until both sides have written") — watch the live campaign.
 - Marks uptake: do players promote lines, and does anyone lie? Watch the live campaign.
-- The archive shelf: concluded campaigns as pin-dense map thumbnails (identity-is-the-shape), not yet designed.
+- The archive shelf: concluded campaigns as pin-dense map thumbnails — not yet designed.
+- Painted fog's authoring surface — post-V1, likely the first thing GM-shaped tables ask for by name.
 
 ## Principles (bind all future work)
 Plural memory is the artifact · canon/testimony split, authority by layer · identity-first, table-private · the map is the browse surface · sessions are the clock · every system must survive a low-energy month.
