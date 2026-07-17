@@ -1,8 +1,9 @@
 // The write path's contracts: testimony closes on the table's clock, marks
-// are brevity-capped and author-only, canon accretes by owner act.
+// are brevity-capped and author-only, and a pending member's words are
+// visible only to themselves and the owner.
 
 import { beforeEach, describe, expect, it } from 'vitest';
-import { Store } from '../src/store';
+import { Store, testimonyVisibleTo } from '../src/store';
 import { seed } from '../src/data/seed';
 import { MARK_MAX_CHARS } from '../src/model';
 
@@ -44,8 +45,8 @@ describe('marks', () => {
     const event = store.addEvent('p4', 'skirmish');
     const entry = store.writeTestimony(event.id, 'm2', 'a long account of the day');
     expect(() => store.promoteMark(entry.id, 'm2', 'x'.repeat(MARK_MAX_CHARS + 1))).toThrow(/plaque/);
-    const mark = store.promoteMark(entry.id, 'm2', 'beware the fen');
-    expect(mark.pinId).toBe('p4');
+    const marked = store.promoteMark(entry.id, 'm2', 'beware the fen');
+    expect(marked.markText).toBe('beware the fen');
   });
 
   it('only the author can scrawl, and only once per entry', () => {
@@ -54,6 +55,32 @@ describe('marks', () => {
     expect(() => store.promoteMark(entry.id, 'm3', 'forged words')).toThrow(/author/);
     store.promoteMark(entry.id, 'm2', 'real words');
     expect(() => store.promoteMark(entry.id, 'm2', 'more words')).toThrow(/already/);
+  });
+});
+
+describe('the pending-visibility rule (membership follows the proposal pattern)', () => {
+  // seed: Thistle (m4) is pending and wrote t5; Rian (m1) owns the table
+
+  it('shows a pending member\'s testimony only to its author and the owner', () => {
+    const t5 = store.data.testimony.find((t) => t.id === 't5')!;
+    expect(testimonyVisibleTo(store.data, t5, 'm4')).toBe(true); // author
+    expect(testimonyVisibleTo(store.data, t5, 'm1')).toBe(true); // owner
+    expect(testimonyVisibleTo(store.data, t5, 'm2')).toBe(false); // the table waits
+    expect(store.canSee(t5, 'm3')).toBe(false);
+  });
+
+  it('shows an active member\'s testimony to the whole table', () => {
+    const t1 = store.data.testimony.find((t) => t.id === 't1')!;
+    for (const m of store.data.members) {
+      expect(testimonyVisibleTo(store.data, t1, m.id)).toBe(true);
+    }
+  });
+
+  it('lets a pending member write immediately, and approval reveals their words', () => {
+    const entry = store.writeTestimony('e4', 'm4', 'amended from the reeds');
+    expect(testimonyVisibleTo(store.data, entry, 'm2')).toBe(false);
+    store.data.members.find((m) => m.id === 'm4')!.status = 'active';
+    expect(testimonyVisibleTo(store.data, entry, 'm2')).toBe(true);
   });
 });
 

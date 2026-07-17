@@ -1,12 +1,14 @@
 // The pin surface: a site's lineage, read top to bottom — marks found first
-// (graffiti, unattributed at a glance), then site canon, then events in
-// session order with testimony. When viewing the present, it is also the
-// write surface: open slots take words, your fresh entries stay editable
-// until the table's clock closes them, and the owner accretes canon.
+// (graffiti, unattributed at a glance), then events in session order with
+// testimony. When viewing the present, it is also the write surface: open
+// slots take words, your fresh entries stay editable until the table's clock
+// closes them. A pending member's words render only for themselves and the
+// owner — everyone else sees an open slot.
 
 import type { CampaignData } from '../model';
 import { MARK_MAX_CHARS } from '../model';
 import type { Store } from '../store';
+import { testimonyVisibleTo } from '../store';
 
 export interface SurfaceContext {
   store: Store;
@@ -57,22 +59,17 @@ export function renderPinSurface(host: HTMLElement, ctx: SurfaceContext): void {
   const events = data.events
     .filter((e) => e.pinId === pinId && e.session <= session)
     .sort((a, b) => a.session - b.session);
-  const canon = data.siteCanon.filter((c) => c.pinId === pinId && c.session <= session);
-  const marks = data.marks.filter((m) => m.pinId === pinId && m.session <= session);
+  const eventIds = new Set(events.map((e) => e.id));
+  const marks = data.testimony.filter(
+    (t) => t.markText && eventIds.has(t.eventId) && t.session <= session && testimonyVisibleTo(data, t, viewerId),
+  );
 
   const frag = document.createDocumentFragment();
   frag.appendChild(el('h2', undefined, pin.name));
 
   // marks first: what you find scrawled at the site before you know its story
   for (const mark of marks) {
-    frag.appendChild(el('p', 'mark', `someone scrawled here: “${mark.text}”`));
-  }
-
-  for (const line of canon) {
-    frag.appendChild(el('p', 'site-canon', line.line));
-  }
-  if (isOwner && writable) {
-    frag.appendChild(lineForm('the environment remembers…', 'set down', (v) => store.addSiteCanon(pinId, v)));
+    frag.appendChild(el('p', 'mark', `someone scrawled here: “${mark.markText}”`));
   }
 
   for (const event of events) {
@@ -82,7 +79,10 @@ export function renderPinSurface(host: HTMLElement, ctx: SurfaceContext): void {
 
     for (const memberId of event.participantIds) {
       const member = data.members.find((m) => m.id === memberId);
-      const entry = data.testimony.find((t) => t.eventId === event.id && t.memberId === memberId);
+      const found = data.testimony.find((t) => t.eventId === event.id && t.memberId === memberId);
+      // a pending member's entry exists only for its author and the owner;
+      // to everyone else the slot reads as open
+      const entry = found && testimonyVisibleTo(data, found, viewerId) ? found : undefined;
       const mine = memberId === viewerId;
 
       const t = el('div', 'testimony' + (entry ? '' : ' empty'));
@@ -98,7 +98,7 @@ export function renderPinSurface(host: HTMLElement, ctx: SurfaceContext): void {
         });
         const hint = el('p', 'grace-hint', 'open until the next session begins');
         t.append(area, save, hint);
-        if (!data.marks.some((m) => m.testimonyId === entry.id)) {
+        if (!entry.markText) {
           t.appendChild(
             lineForm(`leave a mark on this place (${MARK_MAX_CHARS} chars)`, 'scrawl', (v) => {
               try {

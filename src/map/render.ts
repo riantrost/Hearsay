@@ -3,6 +3,7 @@
 // Viewport re-applies its transform to the fresh <g class="vp"> afterwards.
 
 import type { CampaignData, Pin } from '../model';
+import { testimonyVisibleTo } from '../store';
 
 const SVG_NS = 'http://www.w3.org/2000/svg';
 
@@ -10,6 +11,8 @@ export interface MapView {
   /** Pins visible at this session, with their accumulated-event counts. */
   session: number;
   selectedPinId: string | null;
+  /** Who is looking — a pending member's marks show only to author + owner. */
+  viewerId: string;
 }
 
 export function visiblePins(data: CampaignData, session: number): Pin[] {
@@ -37,7 +40,10 @@ export function renderMap(host: HTMLElement, data: CampaignData, view: MapView):
 
   for (const pin of visiblePins(data, view.session)) {
     const events = data.events.filter((e) => e.pinId === pin.id && e.session <= view.session);
-    const marks = data.marks.filter((m) => m.pinId === pin.id && m.session <= view.session);
+    const eventIds = new Set(events.map((e) => e.id));
+    const marks = data.testimony.filter(
+      (t) => t.markText && eventIds.has(t.eventId) && t.session <= view.session && testimonyVisibleTo(data, t, view.viewerId),
+    );
 
     const pg = document.createElementNS(SVG_NS, 'g');
     pg.setAttribute('class', 'pin' + (pin.id === view.selectedPinId ? ' selected' : ''));

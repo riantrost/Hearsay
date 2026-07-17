@@ -1,13 +1,28 @@
 // Mutations over CampaignData — the write path. This is where the settled
 // forks become enforcement: testimony closes on the table's clock (editable
 // until the next session's first event lands), marks are brevity-capped and
-// immutable, site canon is append-only. localStorage stands in for the
-// eventual backend; the mutation surface is what will become the API.
+// immutable, pending members' posts are visible only to themselves and the
+// owner. localStorage stands in for the eventual backend; the mutation
+// surface is what will become the API.
 
-import type { CampaignData, Mark, Pin, SiteCanon, SiteEvent, Testimony } from './model';
+import type { CampaignData, Pin, SiteEvent, Testimony } from './model';
 import { MARK_MAX_CHARS } from './model';
 
-const KEY = 'hearsay-data-v1';
+const KEY = 'hearsay-data-v2';
+
+/**
+ * The pending-visibility rule (proposal pattern, docs/decisions.md): a
+ * pending member writes immediately, but their testimony is visible only to
+ * its author and the owner until approval. An active author's testimony is
+ * visible to the whole table.
+ */
+export function testimonyVisibleTo(data: CampaignData, t: Testimony, viewerId: string): boolean {
+  const author = data.members.find((m) => m.id === t.memberId);
+  if (author?.status !== 'pending') return true;
+  if (viewerId === t.memberId) return true;
+  const viewer = data.members.find((m) => m.id === viewerId);
+  return viewer?.role === 'owner';
+}
 
 function persist(data: CampaignData): void {
   if (typeof localStorage !== 'undefined') {
@@ -52,7 +67,7 @@ export class Store {
   // --- canon layer (owner acts) ---
 
   addPin(x: number, y: number, name: string): Pin {
-    const pin: Pin = { id: id('p'), x, y, name: name.trim() };
+    const pin: Pin = { id: id('p'), campaignId: this.data.campaign.id, x, y, name: name.trim() };
     this.data.pins.push(pin);
     this.commit();
     return pin;
@@ -72,13 +87,6 @@ export class Store {
     return event;
   }
 
-  addSiteCanon(pinId: string, line: string): SiteCanon {
-    const canon: SiteCanon = { id: id('sc'), pinId, session: this.data.campaign.currentSession, line: line.trim() };
-    this.data.siteCanon.push(canon);
-    this.commit();
-    return canon;
-  }
-
   advanceSession(): number {
     this.data.campaign.currentSession += 1;
     this.commit();
@@ -94,6 +102,11 @@ export class Store {
    */
   canEdit(t: Testimony): boolean {
     return !this.data.events.some((e) => e.session > t.session);
+  }
+
+  /** The pending-visibility rule, on the store's data. */
+  canSee(t: Testimony, viewerId: string): boolean {
+    return testimonyVisibleTo(this.data, t, viewerId);
   }
 
   /**
@@ -126,20 +139,16 @@ export class Store {
   }
 
   /** Promote one line of your own testimony to a mark on the pin. */
-  promoteMark(testimonyId: string, memberId: string, text: string): Mark {
+  promoteMark(testimonyId: string, memberId: string, text: string): Testimony {
     const t = this.data.testimony.find((x) => x.id === testimonyId);
     if (!t) throw new Error('no such testimony');
     if (t.memberId !== memberId) throw new Error('only the author can leave a mark');
-    if (this.data.marks.some((m) => m.testimonyId === testimonyId)) {
-      throw new Error('a mark is already scrawled from this entry');
-    }
+    if (t.markText) throw new Error('a mark is already scrawled from this entry');
     const line = text.trim();
     if (!line) throw new Error('a mark needs words');
     if (line.length > MARK_MAX_CHARS) throw new Error(`a mark is graffiti, not a plaque: ${MARK_MAX_CHARS} characters at most`);
-    const event = this.data.events.find((e) => e.id === t.eventId)!;
-    const mark: Mark = { id: id('k'), testimonyId, pinId: event.pinId, session: t.session, text: line };
-    this.data.marks.push(mark);
+    t.markText = line;
     this.commit();
-    return mark;
+    return t;
   }
 }

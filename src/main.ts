@@ -39,7 +39,7 @@ let viewerId = localStorage.getItem('hearsay-as') ?? store.data.members[0]!.id;
 for (const m of store.data.members) {
   const opt = document.createElement('option');
   opt.value = m.id;
-  opt.textContent = m.role === 'owner' ? `${m.name} (owner)` : m.name;
+  opt.textContent = m.role === 'owner' ? `${m.name} (owner)` : m.status === 'pending' ? `${m.name} (pending)` : m.name;
   identitySelect.appendChild(opt);
 }
 identitySelect.value = viewerId;
@@ -79,7 +79,7 @@ const viewport = new Viewport(mapHost, {
 viewport.setContentSize(store.data.campaign.mapW, store.data.campaign.mapH);
 
 function render(): void {
-  renderMap(mapHost, store.data, { session, selectedPinId });
+  renderMap(mapHost, store.data, { session, selectedPinId, viewerId });
   viewport.apply();
   slider.max = String(store.data.campaign.currentSession);
   sliderLabel.textContent = `Session ${session}`;

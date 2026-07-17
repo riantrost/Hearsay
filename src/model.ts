@@ -1,6 +1,8 @@
-// Core data shapes, post pin/event split (docs/decisions.md): a Pin is a
-// place; SiteEvents accumulate at it. Everything below Campaign carries a
-// session stamp — that column is the scrubber.
+// Core data shapes — the five V1 entities (docs/HANDOFF.md, simplified
+// 2026-07-17): a Pin is a place; SiteEvents accumulate at it. A mark is a
+// highlight on testimony (`markText`), not a content type; site canon is
+// settled but deferred out of V1 build scope. Everything below Campaign
+// carries a session stamp — that column is the scrubber.
 
 export interface Campaign {
   id: string;
@@ -10,30 +12,32 @@ export interface Campaign {
   mapW: number;
   mapH: number;
   currentSession: number;
+  /** Shareable code that admits a joiner as a pending member. */
+  joinCode: string;
 }
 
 export interface Member {
   id: string;
+  campaignId: string;
   name: string;
   role: 'owner' | 'player';
+  /**
+   * Membership follows the proposal pattern (docs/decisions.md): a joiner is
+   * pending — they can write immediately, but their posts are visible only to
+   * themselves and the owner until approval makes them active.
+   */
+  status: 'active' | 'pending';
 }
 
 export interface Pin {
   id: string;
+  campaignId: string;
   /** Normalized [0,1] position on the map image. */
   x: number;
   y: number;
   name: string;
   /** Session the pin was revealed; undefined = visible from the start. */
   hiddenUntilSession?: number;
-}
-
-/** One line the environment remembers, owner-authored, append-only. */
-export interface SiteCanon {
-  id: string;
-  pinId: string;
-  session: number;
-  line: string;
 }
 
 /** Named SiteEvent to stay clear of the DOM's Event. */
@@ -51,15 +55,8 @@ export interface Testimony {
   memberId: string;
   session: number;
   text: string;
-}
-
-/** One line of testimony promoted to graffiti on the pin. */
-export interface Mark {
-  id: string;
-  testimonyId: string;
-  pinId: string;
-  session: number;
-  text: string;
+  /** One line promoted to graffiti on the pin — a highlight, not a content type. */
+  markText?: string;
 }
 
 export const MARK_MAX_CHARS = 100;
@@ -68,8 +65,6 @@ export interface CampaignData {
   campaign: Campaign;
   members: Member[];
   pins: Pin[];
-  siteCanon: SiteCanon[];
   events: SiteEvent[];
   testimony: Testimony[];
-  marks: Mark[];
 }
