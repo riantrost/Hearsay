@@ -5,8 +5,12 @@
 // (movement under a threshold) so panning never mis-fires as pin selection.
 
 export interface ViewportOptions {
-  /** Called with the pointerdown target when a gesture ends as a tap. */
-  onTap: (target: Element) => void;
+  /**
+   * Called when a gesture ends as a tap, with the pointerdown target and
+   * the tap point in content space (map px, pre-transform) — what pin
+   * placement needs.
+   */
+  onTap: (target: Element, cx: number, cy: number) => void;
 }
 
 const MIN_SCALE = 0.15;
@@ -24,7 +28,7 @@ export class Viewport {
   ty = 0;
 
   private el: HTMLElement;
-  private onTap: (target: Element) => void;
+  private onTap: (target: Element, cx: number, cy: number) => void;
   private pointers = new Map<number, PointerInfo>();
   private tapCandidate: { target: Element; x: number; y: number } | null = null;
   private contentW = 0;
@@ -158,9 +162,9 @@ export class Viewport {
   private onPointerUp = (ev: PointerEvent): void => {
     this.pointers.delete(ev.pointerId);
     if (this.tapCandidate && this.pointers.size === 0) {
-      const { target } = this.tapCandidate;
+      const { target, x, y } = this.tapCandidate;
       this.tapCandidate = null;
-      this.onTap(target);
+      this.onTap(target, (x - this.tx) / this.scale, (y - this.ty) / this.scale);
     }
   };
 
