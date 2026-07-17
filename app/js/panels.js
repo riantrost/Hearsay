@@ -4,6 +4,7 @@
 
 import * as S from './state.js';
 import * as Y from './sync.js';
+import * as R from './reads.js';
 import { el, openSheet, closeSheet, toast, confirmDialog } from './ui.js';
 import { pickImage } from './util.js';
 
@@ -151,6 +152,10 @@ export function openPinDetail(state, event, onDone) {
   const isOwner = identity === 'owner';
   const locked = state.concluded;
 
+  // Which words are new to this device — decided before opening witnesses them,
+  // so the sheet can point at exactly the entries worth rereading, once.
+  const newWords = R.unreadAuthorsOn(state, event);
+
   const head = el('div', { class: 'pin-head' }, [
     el('div', { class: 'pin-head__meta' }, [
       el('span', { class: 'tag tag--' + event.type, text: TYPE_LABEL[event.type] }),
@@ -168,11 +173,12 @@ export function openPinDetail(state, event, onDone) {
     const canRead = S.testimonyReadable(pid, identity, state);
     const filled = !!t;
 
-    const slot = el('div', { class: 'slot' + (filled ? ' slot--filled' : ' slot--open') }, [
+    const slot = el('div', { class: 'slot' + (filled ? ' slot--filled' : ' slot--open') + (newWords.has(pid) ? ' slot--new' : '') }, [
       el('div', { class: 'slot__by' }, [
         el('span', { class: 'slot__dot', style: { background: p.color } }),
         el('strong', { text: p.name }),
         mine ? el('span', { class: 'muted', text: ' · you' }) : null,
+        newWords.has(pid) ? el('span', { class: 'slot__newmark', text: 'new words' }) : null,
       ]),
     ]);
 
@@ -199,6 +205,12 @@ export function openPinDetail(state, event, onDone) {
   ]) : null;
 
   openSheet(event.name, el('div', {}, [head, el('div', { class: 'slots' }, slots), ownerControls]));
+
+  // Opening the pin is the act of witnessing: the ember behind the sheet goes out.
+  if (newWords.size) {
+    R.witnessEvent(state, event);
+    onDone && onDone();
+  }
 }
 
 function openTestimonyEditor(state, event, playerId, onDone) {

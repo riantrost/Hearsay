@@ -4,6 +4,7 @@
 
 import * as S from './state.js';
 import * as Y from './sync.js';
+import * as R from './reads.js';
 import { el, mount, openSheet, closeSheet, toast } from './ui.js';
 
 export async function renderHome({ onOpen }) {
@@ -53,6 +54,8 @@ async function campaignCard(c, onOpen) {
     thumb.appendChild(el('span', { class: 'card__pin pin--' + e.type,
       style: { left: (e.x * 100) + '%', top: (e.y * 100) + '%' } }));
   }
+  // Words wait quietly: an ember, never a number.
+  if (R.campaignHasUnread(c)) thumb.appendChild(el('span', { class: 'card__ember', title: 'New words since you last looked' }));
   card.append(
     thumb,
     el('div', { class: 'card__meta' }, [

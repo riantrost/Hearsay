@@ -2,7 +2,7 @@
 // lives in IndexedDB (see js/db.js), never here; this only holds the static shell.
 // Bump CACHE when shipping new assets so clients pick them up.
 
-const CACHE = 'hearsay-shell-v2';
+const CACHE = 'hearsay-shell-v3';
 const SHELL = [
   './',
   './index.html',
@@ -16,6 +16,7 @@ const SHELL = [
   './js/panels.js',
   './js/state.js',
   './js/db.js',
+  './js/reads.js',
   './js/remote.js',
   './js/sync.js',
   './js/viewport.js',

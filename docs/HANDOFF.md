@@ -1,6 +1,10 @@
 # Hearsay — Session Handoff
 *Start any new development session from this doc + docs/hearsay-vision.md.*
 
+## Project state (2026-07-17, fourth session pt. 3 — the ember)
+- **Unread words glint.** The moment sync created — words arriving between sessions — now lands on the map: pins carrying readable testimony this device hasn't witnessed breathe with a warm ember (`app/js/reads.js` + paint/detail/shelf wiring); opening the pin extinguishes it and the sheet marks the new entries once. Per-device read-state beside identity, never synced/exported, no receipts, no counts; sealed words never tease; present-time only; shelf cards get a dot. Full boundaries pinned in [decisions.md](decisions.md) ("The ember"). Verified in the two-device driver (7 new assertions — glint appears for the owner when Ana's words arrive, marks exactly the right pin and slot, extinguishes on witnessing, stays out, shelf dot shows): 18/18 three consecutive runs, local driver still 8/8.
+- **Not built, named:** warband edits as ember-bearers (candidate); witnessed-state keys for deleted events linger in localStorage (harmless, tiny).
+
 ## Project state (2026-07-17, fourth session pt. 2 — the backend rung, built)
 - **The table server exists.** One Supabase project per table; `supabase/schema.sql` carries the whole authority model into row security (owner-only canon, author-only testimony, hidden pins never sent to players, sealing server-enforced, proposals proposer+owner-only). Devices are **anonymous auth users** — no accounts, no emails; a one-line invite (`url#anonkey#code`) seats a device, and the seat is claimed at the same picker as ever. Fork pinned in [decisions.md](decisions.md) ("The table server is a meeting point, not a home"): local-first stays primary, sync at the moments a table meets (open / focus / each act, coalesced / on demand), **no websockets**, **no vendored SDK** (thin fetch client, `app/js/remote.js`), LWW-per-row made honest by authority-by-layer.
 - **Two test rigs now guard it, both green:**

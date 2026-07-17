@@ -5,6 +5,7 @@
 
 import * as S from './state.js';
 import * as Y from './sync.js';
+import * as R from './reads.js';
 import { el, clear, mount, toast } from './ui.js';
 import { Viewport } from './viewport.js';
 import { pickImage } from './util.js';
@@ -19,6 +20,7 @@ let refs = {};
 export async function renderCampaign(state, { onHome }) {
   viewSession = state.currentSession;
   placing = false;
+  R.baseline(state); // the map starts remembering what this device has witnessed
 
   const frame = el('div', { class: 'mapframe', id: 'mapframe' });
   const world = el('div', { class: 'world', id: 'world' });
@@ -150,20 +152,27 @@ function paint(state) {
   const isOwner = S.getIdentity(state.id) === 'owner';
   const vs = viewSession ?? state.currentSession;
 
+  // The ember lives in the present: while scrubbing the past you're rereading
+  // deliberately, and the invitation would only be noise there.
+  const atNow = vs === state.currentSession;
+
   for (const e of state.events) {
     if (!S.eventVisibleAt(e, vs, isOwner)) continue;
     const total = e.slots.length || 1;
     const filled = e.slots.filter(pid => S.getTestimony(e.id, pid)).length;
     const frac = filled / total;
+    const unread = atNow && R.unreadOn(state, e);
 
     const pin = el('button', {
       class: 'pin pin--' + e.type
         + (e.hidden ? ' pin--staged' : '')
-        + (e.session === vs ? ' pin--fresh' : ''),
+        + (e.session === vs ? ' pin--fresh' : '')
+        + (unread ? ' pin--unread' : ''),
       style: { left: (e.x * 100) + '%', top: (e.y * 100) + '%', '--frac': frac },
-      title: e.name,
+      title: e.name + (unread ? ' — new words' : ''),
       onclick: (ev) => { ev.stopPropagation(); P.openPinDetail(state, e, () => paint(state)); },
     }, [
+      unread ? el('span', { class: 'pin__ember' }) : null,
       el('span', { class: 'pin__ring' }),
       el('span', { class: 'pin__core' }),
       el('span', { class: 'pin__badge', text: filled + '/' + total }),
