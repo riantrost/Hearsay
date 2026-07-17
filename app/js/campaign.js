@@ -38,7 +38,8 @@ export async function renderCampaign(state, { onHome }) {
   const banner = el('div', { class: 'scrub-banner', id: 'scrubBanner' });
 
   // Populate refs before building the top bar, which stashes refs.placeBtn as it goes.
-  refs = { frame, world, img, gridCanvas, pinLayer, banner, placeBar };
+  // ctx rides along so deep children (e.g. the mapdrop) can trigger a full rerender.
+  refs = { frame, world, img, gridCanvas, pinLayer, banner, placeBar, ctx: { onHome } };
 
   const screen = el('div', { class: 'campaign' }, [
     topBar(state, { onHome }),
@@ -115,8 +116,9 @@ function renderMapDrop(state) {
         const picked = await pickImage();
         if (!picked) return;
         await S.setMapImage(picked.blob, picked.w, picked.h);
-        drop.remove();
-        await loadMap(state); paint(state);
+        // Full rerender, not just a map repaint: the top bar was built while the
+        // campaign had no map, so "＋ Pin" doesn't exist until the chrome rebuilds.
+        rerender(state, refs.ctx);
       } }) : null,
       isOwner ? el('p', { class: 'muted mini', text: 'Uploaded art, scanned source, or a photo of a napkin — all first-class.' }) : null,
     ]),

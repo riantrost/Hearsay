@@ -5,8 +5,14 @@
 const DB_NAME = 'hearsay';
 const DB_VERSION = 1;
 
+// One connection for the app's lifetime. Besides avoiding a per-call open, this
+// matters at pagehide: the unload-time save flush only has to start a transaction
+// (which browsers let finish), not wait on a fresh connection callback.
+let openPromise = null;
+
 function open() {
-  return new Promise((resolve, reject) => {
+  if (openPromise) return openPromise;
+  openPromise = new Promise((resolve, reject) => {
     const req = indexedDB.open(DB_NAME, DB_VERSION);
     req.onupgradeneeded = () => {
       const db = req.result;
@@ -18,8 +24,9 @@ function open() {
       }
     };
     req.onsuccess = () => resolve(req.result);
-    req.onerror = () => reject(req.error);
+    req.onerror = () => { openPromise = null; reject(req.error); };
   });
+  return openPromise;
 }
 
 function tx(store, mode, fn) {

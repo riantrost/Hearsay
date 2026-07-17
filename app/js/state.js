@@ -14,7 +14,6 @@ const PLAYER_COLORS = ['#e0524b', '#3f8cd6', '#4aa96c', '#c9922e', '#9163cb', '#
 
 let current = null;           // the open campaign state, or null
 const listeners = new Set();
-let saveTimer = null;
 
 // ---- id + subscription plumbing -------------------------------------------
 
@@ -31,24 +30,15 @@ function notify() {
   for (const fn of listeners) fn(current);
 }
 
+// Every mutation here is a discrete user act (a Save press, a pin drop) — there is
+// no keystroke-frequency writer — so each one persists immediately. A save debounce
+// was tried and removed: it opened a window where navigating or reloading right
+// after writing testimony dropped the words, and coalesced nothing in return.
 function touch() {
   if (!current) return;
   current.updatedAt = Date.now();
   notify();
-  if (saveTimer) clearTimeout(saveTimer);
-  // Capture the campaign now: `current` may be nulled (closeCampaign) or swapped
-  // (loadCampaign) before the debounce fires, and the pending edit must still land.
-  const snapshot = current;
-  saveTimer = setTimeout(() => { saveTimer = null; db.putCampaign(snapshot); }, 250);
-}
-
-// Persist any debounced edit immediately. Called before the open campaign changes,
-// so navigating away within the debounce window can never drop a player's words.
-function flushSave() {
-  if (!saveTimer) return;
-  clearTimeout(saveTimer);
-  saveTimer = null;
-  if (current) db.putCampaign(current);
+  db.putCampaign(current);
 }
 
 // ---- identity (per device) -------------------------------------------------
@@ -78,14 +68,12 @@ export async function listCampaigns() {
 }
 
 export async function loadCampaign(id) {
-  flushSave();
   current = await db.getCampaign(id);
   notify();
   return current;
 }
 
 export function closeCampaign() {
-  flushSave();
   current = null;
   notify();
 }
