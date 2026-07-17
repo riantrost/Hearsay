@@ -4,6 +4,7 @@
 
 import { beforeEach, describe, expect, it } from 'vitest';
 import { Store, testimonyVisibleTo } from '../src/store';
+import { visibleData } from '../src/mutations';
 import { seed } from '../src/data/seed';
 import { MARK_MAX_CHARS } from '../src/model';
 
@@ -76,6 +77,14 @@ describe('the pending-visibility rule (membership follows the proposal pattern)'
     }
   });
 
+  it('strips invisible testimony from the API view — absent, not redacted, marks included', () => {
+    // visibleData is what GET /api/campaigns/:id returns for a seat
+    const forVex = visibleData(store.data, 'm2');
+    expect(forVex.testimony.some((t) => t.id === 't5')).toBe(false);
+    const forOwner = visibleData(store.data, 'm1');
+    expect(forOwner.testimony.some((t) => t.id === 't5')).toBe(true);
+  });
+
   it('lets a pending member write immediately, and approval reveals their words', () => {
     const entry = store.writeTestimony('e4', 'm4', 'amended from the reeds');
     expect(testimonyVisibleTo(store.data, entry, 'm2')).toBe(false);
@@ -95,5 +104,11 @@ describe('canon acts', () => {
   it('only participants can testify', () => {
     const event = store.addEvent('p4', 'a private duel', ['m2']);
     expect(() => store.writeTestimony(event.id, 'm3', 'I was not there')).toThrow(/participant/);
+  });
+
+  it('refuses canon aimed at nothing — no event without a pin, no unknown participants', () => {
+    // the server runs the same mutation layer, so these are its 4xx responses
+    expect(() => store.addEvent('p999', 'a rumor with no place')).toThrow(/no such pin/);
+    expect(() => store.addEvent('p4', 'a duel of strangers', ['m999'])).toThrow(/unknown participant/);
   });
 });

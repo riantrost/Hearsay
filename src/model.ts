@@ -60,6 +60,7 @@ export interface Testimony {
 }
 
 export const MARK_MAX_CHARS = 100;
+export const MAX_TESTIMONY_CHARS = 5000;
 
 export interface CampaignData {
   campaign: Campaign;

@@ -1,0 +1,15 @@
+# Cloudflare Pages config: static app + /api Functions (Fragments' pattern).
+# The KV id below is a placeholder — local `wrangler pages dev` simulates
+# bindings and never reads it; swap in the real namespace id at deploy
+# (roadmap step 9) after `wrangler kv namespace create HEARSAY`.
+name = "hearsay-preview"
+compatibility_date = "2026-07-01"
+pages_build_output_dir = "dist"
+
+[[kv_namespaces]]
+binding = "HEARSAY"
+id = "00000000000000000000000000000000"
+
+[[r2_buckets]]
+binding = "MAPS"
+bucket_name = "hearsay-maps"
