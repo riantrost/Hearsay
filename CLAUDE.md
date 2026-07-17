@@ -28,7 +28,7 @@ Keep the homes unmixed: `docs/decisions.md` is for **product/scope forks** (thes
 
 - Update `docs/HANDOFF.md` at the end of substantial sessions.
 - New settled decisions get a paragraph in `docs/decisions.md`.
-- Once there's a test suite, it's the contract between sessions — a session that ends red didn't end.
+- The test suite (`npm test`) is the contract between sessions — a session that ends red didn't end.
 
 ## Principles (bind all future work)
 
