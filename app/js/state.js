@@ -36,7 +36,19 @@ function touch() {
   current.updatedAt = Date.now();
   notify();
   if (saveTimer) clearTimeout(saveTimer);
-  saveTimer = setTimeout(() => db.putCampaign(current), 250);
+  // Capture the campaign now: `current` may be nulled (closeCampaign) or swapped
+  // (loadCampaign) before the debounce fires, and the pending edit must still land.
+  const snapshot = current;
+  saveTimer = setTimeout(() => { saveTimer = null; db.putCampaign(snapshot); }, 250);
+}
+
+// Persist any debounced edit immediately. Called before the open campaign changes,
+// so navigating away within the debounce window can never drop a player's words.
+function flushSave() {
+  if (!saveTimer) return;
+  clearTimeout(saveTimer);
+  saveTimer = null;
+  if (current) db.putCampaign(current);
 }
 
 // ---- identity (per device) -------------------------------------------------
@@ -66,12 +78,14 @@ export async function listCampaigns() {
 }
 
 export async function loadCampaign(id) {
+  flushSave();
   current = await db.getCampaign(id);
   notify();
   return current;
 }
 
 export function closeCampaign() {
+  flushSave();
   current = null;
   notify();
 }
@@ -186,7 +200,13 @@ export function updateEvent(id, patch) {
   if (!current) return;
   const e = current.events.find(ev => ev.id === id);
   if (!e) return;
+  const wasHidden = e.hidden;
   Object.assign(e, patch);
+  // Un-hiding through Edit is still a reveal: stamp it so the scrubber shows the
+  // pin appearing now, not retroactively since its origin session. Re-staging
+  // clears the stamp so a later reveal gets a fresh one.
+  if (wasHidden && !e.hidden) e.revealSession = current.currentSession;
+  else if (!wasHidden && e.hidden) e.revealSession = null;
   touch();
 }
 
