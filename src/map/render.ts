@@ -10,6 +10,8 @@ export interface MapView {
   /** Pins visible at this session, with their accumulated-event counts. */
   session: number;
   selectedPinId: string | null;
+  /** Owner at the present: also render event-less pins, ghosted. */
+  withGhosts?: boolean;
 }
 
 export function visiblePins(data: CampaignData, session: number): Pin[] {
@@ -17,6 +19,21 @@ export function visiblePins(data: CampaignData, session: number): Pin[] {
     const revealed = p.hiddenUntilSession === undefined || p.hiddenUntilSession <= session;
     const hasEvents = data.events.some((e) => e.pinId === p.id && e.session <= session);
     return revealed && hasEvents;
+  });
+}
+
+/**
+ * Pins with no history yet. "A site with no history has no page" holds for
+ * players — but the owner who just named a place must be able to reach it
+ * again to give it its first event, so to them it renders as a ghost.
+ * Reveal sessions still apply; owner-side handling of deliberately hidden
+ * pins is step 8's toggle, not this rule.
+ */
+export function ghostPins(data: CampaignData, session: number): Pin[] {
+  return data.pins.filter((p) => {
+    const revealed = p.hiddenUntilSession === undefined || p.hiddenUntilSession <= session;
+    const hasEvents = data.events.some((e) => e.pinId === p.id && e.session <= session);
+    return revealed && !hasEvents;
   });
 }
 
@@ -35,24 +52,30 @@ export function renderMap(host: HTMLElement, data: CampaignData, view: MapView):
   img.setAttribute('height', String(mapH));
   g.appendChild(img);
 
-  for (const pin of visiblePins(data, view.session)) {
+  const ghosts = view.withGhosts ? ghostPins(data, view.session) : [];
+  const ghostIds = new Set(ghosts.map((p) => p.id));
+
+  for (const pin of [...visiblePins(data, view.session), ...ghosts]) {
+    const isGhost = ghostIds.has(pin.id);
     // data arrives seat-filtered from the server: any mark present is yours to see
     const events = data.events.filter((e) => e.pinId === pin.id && e.session <= view.session);
     const eventIds = new Set(events.map((e) => e.id));
     const marks = data.testimony.filter((t) => t.markText && eventIds.has(t.eventId) && t.session <= view.session);
 
     const pg = document.createElementNS(SVG_NS, 'g');
-    pg.setAttribute('class', 'pin' + (pin.id === view.selectedPinId ? ' selected' : ''));
+    pg.setAttribute('class', 'pin' + (isGhost ? ' ghost' : '') + (pin.id === view.selectedPinId ? ' selected' : ''));
     pg.setAttribute('data-pin-id', pin.id);
     // pin geometry is authored at a 1600px reference map; scale with the image
     const u = Math.max(mapW, mapH) / 1600;
     pg.setAttribute('transform', `translate(${pin.x * mapW}, ${pin.y * mapH}) scale(${u})`);
 
-    const halo = document.createElementNS(SVG_NS, 'circle');
-    halo.setAttribute('class', 'pin-halo');
-    // a site deepens as events accumulate: the halo grows with lineage
-    halo.setAttribute('r', String(14 + (events.length - 1) * 6));
-    pg.appendChild(halo);
+    if (!isGhost) {
+      const halo = document.createElementNS(SVG_NS, 'circle');
+      halo.setAttribute('class', 'pin-halo');
+      // a site deepens as events accumulate: the halo grows with lineage
+      halo.setAttribute('r', String(14 + (events.length - 1) * 6));
+      pg.appendChild(halo);
+    }
 
     const dot = document.createElementNS(SVG_NS, 'circle');
     dot.setAttribute('class', 'pin-dot');

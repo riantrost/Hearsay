@@ -65,6 +65,10 @@ export function renderPinSurface(host: HTMLElement, ctx: SurfaceContext): void {
   const frag = document.createDocumentFragment();
   frag.appendChild(el('h2', undefined, pin.name));
 
+  if (events.length === 0 && isOwner) {
+    frag.appendChild(el('p', 'ghost-hint', 'no history here yet — the first event makes this place real to the table'));
+  }
+
   // marks first: what you find scrawled at the site before you know its story
   for (const mark of marks) {
     frag.appendChild(el('p', 'mark', `someone scrawled here: “${mark.markText}”`));

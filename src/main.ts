@@ -153,7 +153,13 @@ function renderTable(store: ApiStore): void {
   }
 
   function render(): void {
-    renderMap(mapHost, store.data, { session, selectedPinId });
+    renderMap(mapHost, store.data, {
+      session,
+      selectedPinId,
+      // the owner sees unwritten sites at the present, so a named place
+      // can always receive its first event
+      withGhosts: isOwner() && session === store.data.campaign.currentSession,
+    });
     viewport.apply();
     renderIdentity();
     slider.max = String(store.data.campaign.currentSession);
