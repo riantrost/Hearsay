@@ -3,6 +3,7 @@
 // These read and mutate through state.js and re-render the map via a passed callback.
 
 import * as S from './state.js';
+import * as Y from './sync.js';
 import { el, openSheet, closeSheet, toast, confirmDialog } from './ui.js';
 import { pickImage } from './util.js';
 
@@ -25,8 +26,65 @@ export function openSeatPicker(state, onPicked) {
       el('span', {}, [el('strong', { text: p.name })]),
     ])),
   ]);
-  function pick(id) { S.setIdentity(state.id, id); closeSheet(); onPicked && onPicked(); }
+  function pick(id) {
+    S.setIdentity(state.id, id);
+    // On a connected campaign the seat is also recorded on the server — that's
+    // what lets row security accept this device's words for that seat.
+    if (Y.isConnected(state) && id !== 'owner') {
+      Y.claimSeat(state, id).catch(() =>
+        toast('Seat saved on this device, but the table server refused it — writes will retry on sync.'));
+    }
+    closeSheet(); onPicked && onPicked();
+  }
   openSheet('Take a seat', body);
+}
+
+// ---- table server: publish + invite -----------------------------------------
+
+export function openPublish(state, onDone) {
+  const def = JSON.parse(localStorage.getItem('hearsay.server') || 'null') || {};
+  const urlI = el('input', { class: 'input', placeholder: 'https://your-project.supabase.co', value: def.url || '' });
+  const keyI = el('input', { class: 'input', placeholder: 'anon public key (eyJ…)', value: def.anonKey || '' });
+  const go = el('button', { class: 'btn btn--primary', text: 'Publish', onclick: async () => {
+    if (!urlI.value.trim() || !keyI.value.trim()) return;
+    go.disabled = true; go.textContent = 'Publishing…';
+    try {
+      await Y.publishCampaign(state, { url: urlI.value.trim(), anonKey: keyI.value.trim() });
+      closeSheet();
+      openInvite(state);
+      onDone && onDone();
+    } catch (err) {
+      toast(err.message);
+      go.disabled = false; go.textContent = 'Publish';
+    }
+  } });
+  openSheet('Publish to a table server', el('div', {}, [
+    el('p', { class: 'muted', style: { marginTop: 0 },
+      text: 'A table server lets everyone hold the same campaign on their own phone. One-time setup: create a free Supabase project, run supabase/schema.sql on it, and enable anonymous sign-ins.' }),
+    field('Server URL', urlI),
+    field('Anon key', keyI),
+    el('p', { class: 'muted mini', text: 'The anon key is public by design — who may read and write what is enforced row by row, by seat.' }),
+    el('div', { class: 'row row--end' }, [go]),
+  ]));
+}
+
+export function openInvite(state) {
+  const invite = Y.makeInvite(state.remote);
+  const ta = el('textarea', { class: 'input input--area', rows: '3', readonly: 'readonly' });
+  ta.value = invite;
+  openSheet('Table & invite', el('div', {}, [
+    el('p', { class: 'muted', style: { marginTop: 0 },
+      text: 'Hand this line to your table — pasting it under “Join a table” seats their device at this campaign.' }),
+    ta,
+    el('p', { class: 'muted mini', text: 'An invite seats a device; it grants no power over canon. The owner seat can’t be claimed with it.' }),
+    el('div', { class: 'row row--end' }, [
+      el('button', { class: 'btn btn--primary', text: 'Copy invite', onclick: () => {
+        (navigator.clipboard?.writeText(invite) || Promise.reject())
+          .then(() => toast('Invite copied — send it to your table.'))
+          .catch(() => { ta.select(); document.execCommand('copy'); toast('Invite copied.'); });
+      } }),
+    ]),
+  ]));
 }
 
 // ---- add / edit event ------------------------------------------------------

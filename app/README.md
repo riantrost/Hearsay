@@ -41,7 +41,13 @@ The core loop the vision names as load-bearing, end to end:
 - **Fog v1 = hidden pins.** The owner can stage a pin invisibly and *reveal* it later;
   the reveal itself lands in the timeline. (Painted fog is deliberately not here yet.)
 - **Identity-first, table-private.** "Which seat is this device?" is a local choice,
-  not an account. No sign-up, no discovery, no server.
+  not an account. No sign-up, no discovery.
+- **A table server, when the table wants one.** The owner publishes a campaign to a
+  Supabase project ([`../supabase/`](../supabase/)) and hands the table a one-line
+  invite; each device joins anonymously and claims a seat. Local stays primary —
+  the server is where devices meet, syncing on open, on focus, on every local act,
+  and on demand. Hidden pins and sealed words are withheld *by the server*, not by
+  client politeness.
 
 ## Architecture (js/)
 
@@ -49,6 +55,8 @@ The core loop the vision names as load-bearing, end to end:
 |------|----------------|
 | `db.js` | the only IndexedDB code — `campaigns` (state JSON) + `images` (blobs) |
 | `state.js` | in-memory model, every mutation, autosave, export/import, identity |
+| `remote.js` | the only server-speaking code: anonymous auth, PostgREST rows, storage |
+| `sync.js` | push-what-this-seat-owns / pull-what-this-seat-may-see, publish/join/claim |
 | `viewport.js` | pan / pinch-zoom over the image-pixel "world" |
 | `campaign.js` | the map screen: pins, grid overlay, scrubber, top bar |
 | `panels.js` | sheets: seat picker, event editor, pin detail, warband, settings |
@@ -64,11 +72,13 @@ inlined) that another device can **import** — the prototype's stand-in for syn
 
 Deliberately deferred so the validation test isn't blocked on plumbing:
 
-- **No backend / no real-time sync.** Data is per-device; the table hands campaigns
-  around by exporting/importing the file. Multiplayer sync is the next roadmap rung
-  and the first thing that needs a server.
+- **No live push.** Sync happens at the moments a table naturally meets (open, focus,
+  act, demand) — no websockets, no presence. Weekly campaigns don't need sub-second
+  latency, and polling-at-meeting-points survives a low-energy month.
+- **No proposal UI yet.** Player-suggested pins are fully modeled and row-secured in
+  the schema; the sheets that surface them are the next rung.
 - **No painted fog, no map-grows-at-the-edges, no archive shelf polish.** All named in
   the vision; none required to answer *will players write testimony unnagged?*
-- **No auth.** Seats are a local choice, honest for a closed table testing the idea.
+- **No accounts, still.** Devices are anonymous users; seats stay a table-private choice.
 
 The refusals hold: not a VTT, no rules content, no wiki, no AI summarization.

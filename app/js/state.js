@@ -39,7 +39,14 @@ function touch() {
   current.updatedAt = Date.now();
   notify();
   db.putCampaign(current);
+  if (mutationHook) mutationHook(current);
 }
+
+// The sync layer registers here (at boot, in app.js) so state.js never has to
+// know a server exists: local persistence is the source of truth, the hook is
+// how a connected campaign's mutations additionally reach the table server.
+let mutationHook = null;
+export function setMutationHook(fn) { mutationHook = fn; }
 
 // ---- identity (per device) -------------------------------------------------
 
@@ -178,6 +185,7 @@ export function addEvent({ name, x, y, session, type, canon, slots, hidden }) {
     hidden: !!hidden,
     // A hidden pin has no reveal yet; a visible pin was "revealed" the session it landed.
     revealSession: hidden ? null : (session ?? current.currentSession),
+    updatedAt: Date.now(),
   };
   current.events.push(e);
   touch();
@@ -189,7 +197,7 @@ export function updateEvent(id, patch) {
   const e = current.events.find(ev => ev.id === id);
   if (!e) return;
   const wasHidden = e.hidden;
-  Object.assign(e, patch);
+  Object.assign(e, patch, { updatedAt: Date.now() });
   // Un-hiding through Edit is still a reveal: stamp it so the scrubber shows the
   // pin appearing now, not retroactively since its origin session. Re-staging
   // clears the stamp so a later reveal gets a fresh one.
@@ -204,6 +212,7 @@ export function revealEvent(id) {
   if (!e) return;
   e.hidden = false;
   e.revealSession = current.currentSession; // the reveal is itself a timeline event
+  e.updatedAt = Date.now();
   touch();
 }
 
@@ -318,6 +327,9 @@ async function dataURLToBlob(dataURL) {
 export async function exportCampaign() {
   if (!current) return null;
   const bundle = JSON.parse(JSON.stringify(current));
+  // A handed-around file is a copy of the words, never of the table's server
+  // binding: membership on the server is only ever earned through an invite.
+  delete bundle.remote;
   if (current.map) {
     const blob = await getMapBlob();
     bundle._image = blob ? await blobToDataURL(blob) : null;
@@ -337,6 +349,8 @@ export async function importCampaign(bundle) {
   // Fresh id so importing never clobbers an existing campaign on this device.
   state.id = uid('c');
   state.updatedAt = Date.now();
+  delete state.remote; // same rule on the way in, for files exported before the rule
+
   if (image && state.map) {
     const blob = await dataURLToBlob(image);
     const imageId = uid('img');

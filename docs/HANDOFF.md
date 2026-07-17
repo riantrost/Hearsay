@@ -1,15 +1,22 @@
 # Hearsay — Session Handoff
 *Start any new development session from this doc + docs/hearsay-vision.md.*
 
+## Project state (2026-07-17, fourth session pt. 2 — the backend rung, built)
+- **The table server exists.** One Supabase project per table; `supabase/schema.sql` carries the whole authority model into row security (owner-only canon, author-only testimony, hidden pins never sent to players, sealing server-enforced, proposals proposer+owner-only). Devices are **anonymous auth users** — no accounts, no emails; a one-line invite (`url#anonkey#code`) seats a device, and the seat is claimed at the same picker as ever. Fork pinned in [decisions.md](decisions.md) ("The table server is a meeting point, not a home"): local-first stays primary, sync at the moments a table meets (open / focus / each act, coalesced / on demand), **no websockets**, **no vendored SDK** (thin fetch client, `app/js/remote.js`), LWW-per-row made honest by authority-by-layer.
+- **Two test rigs now guard it, both green:**
+  1. **RLS contract suite** (`supabase/test/run.sh`, real Postgres 16): 27 assertions, each a product rule from decisions.md. Run it after any schema change.
+  2. **Two-device e2e driver** (headless, real UI, protocol-faithful stub server): owner publishes → player joins by invite → hidden pin *absent from the player's device* → player's testimony crosses to the owner → reveal propagates → idempotent re-sync — 11/11, zero console errors on both contexts. Local-only mode re-verified after the seam (8/8).
+- **App-side seam** (`app/js/sync.js`): every sync = *push the rows this seat owns, then pull everything the server shows this seat and let it win*. Deletions propagate by absence (single-author rows make that safe). Sealed words arrive as word-less placeholders via a `testimony_meta` RPC so completeness rings stay honest. Map images ride Supabase storage. Exports strip the server binding — a handed-around file is a copy of the words, never a seat.
+- **Setup for the real thing** ([supabase/README.md](../supabase/README.md)): create project → run schema.sql → enable Anonymous sign-ins. Owner: menu → *Publish to table…*; players: home → *Join a table…*.
+- **Deferred from this rung, deliberately:** proposal UI (schema + RLS ready and tested; sheets are the next build), owner's-second-device handoff (parked in decisions.md), offline outbox (full re-push of this seat's rows covers a closed table), live push. Small nit noticed in verification: two toasts can stack/overlap.
+
 ## Project state (2026-07-17, fourth session — pre-backend code review)
 - **Full review of `app/` ran clean enough to green-light the Supabase rung.** The layering held: `db.js` is the only storage toucher, all mutations go through `state.js`'s function surface (the seam a Supabase adapter slots into), and the visibility rules are pure functions ready to mirror as RLS. Two model-level bugs were fixed before the schema fossilizes into Postgres (both verified end-to-end with a headless driver, 6/6, no console errors):
   1. **A pending save now survives leaving the campaign.** The 250ms save debounce could fire after `closeCampaign()` nulled `current` — throwing on the IndexedDB keyPath and silently dropping a just-written testimony entry. `touch()` now snapshots the campaign it will save, and `loadCampaign`/`closeCampaign` flush the pending save first.
   2. **Un-hiding via the Edit sheet is now a reveal.** Flipping the Fog toggle off in Edit used to leave `revealSession: null`, making the pin retroactively visible since its origin session — the scrubber lied about what players knew when. `updateEvent` stamps `revealSession` on the hidden→visible transition (and clears it on re-staging), matching `revealEvent` semantics.
-- **Known bugs surfaced by the review, deliberately not fixed this session** (report-first; none block the backend):
-  - **First-run trap:** uploading the map via the empty-state prompt never rebuilds the top bar, so "＋ Pin" doesn't appear until a reload/navigation (`campaign.js` `renderMapDrop` repaints the map but not the chrome). Worth fixing before the Frostgrave test.
-  - A hard page reload inside the 250ms debounce still loses the edit (the flush covers in-app navigation only; a `pagehide` flush would close it).
+- **Known bugs surfaced by the review** (the first-run trap, the reload-window data loss, and the missing-map-blob crash were all fixed later this same day — see the block above; these remain open):
   - Small leaks: replaced map images orphan the old blob in IndexedDB; shelf thumbnail object URLs never revoked; `menuButton` stacks a `document` click listener per rerender. A two-finger tap can fire `onTap` (pinch never increments `_moved`). Import/load never checks the stored `schema` version — add the gate before a second schema exists in the wild.
-  - Export bundles include sealed testimony in plaintext — honest locally, but sealing only becomes enforceable server-side. One more argument the backend is correctly next.
+  - Export bundles include sealed testimony in plaintext — honest locally; with the backend built, sealing is now enforced server-side for connected campaigns, but an owner's export still carries everything (the owner can read everything anyway).
 - **Port shape settled by the review:** decompose `state.js`'s storage into rows (`pins`, `testimony`, `pin_proposals`), keep its mutation API. Do not sync the whole-state blob — blob-sync makes sealed testimony and owner-only writes unenforceable.
 
 ## Project state (2026-07-16, third session — UX pass + backend prep)
@@ -27,9 +34,10 @@
 - **Moved out of Fragments' docs into this folder (2026-07-16).** Hearsay shares the family mission (protect the ritual of play) and conventions but no code or product decisions with Fragments; its forks pin here, never to Fragments' decisions file.
 
 ## Prototype: what's deferred (not refused)
-- **No backend / real-time sync** — the first thing needing a server; the table currently hands campaigns around via export/import. This is the top roadmap rung.
+- ~~No backend / real-time sync~~ **Built 2026-07-17** — Supabase table server with the authority model in RLS; export/import remains for offline hand-arounds. Live *push* (websockets) stays refused-for-now: sync at meeting points.
+- **No proposal UI** — player-suggested pins are modeled, row-secured, and RLS-tested; the app sheets are the next build.
 - **No painted fog, no map-grows-at-the-edges, no archive-shelf polish** — all in the vision, none needed to answer the validation question.
-- **No auth** — seats are a local, table-private choice, honest for a closed table testing the idea.
+- **No accounts, still** — devices are anonymous users; seats are a local, table-private choice.
 - **Grid overlay** draws square/hex for reference but pins don't snap to it yet.
 
 ## Next candidates (not yet forks)

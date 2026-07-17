@@ -336,6 +336,7 @@ select.input { appearance: none; }
 .tag--other { background: rgba(169,152,122,.16); color: var(--t-other); }
 .tag--staged { background: rgba(216,178,90,.16); color: var(--accent); }
 .tag--archived { background: rgba(139,128,105,.18); color: var(--ink-dim); }
+.tag--table { background: rgba(74,142,169,.16); color: #7fb6c9; }
 
 .slots { margin-top: 8px; display: flex; flex-direction: column; gap: 10px; }
 .slot { border: 1px solid var(--line); border-radius: 12px; padding: 13px 15px; background: var(--bg-2); }

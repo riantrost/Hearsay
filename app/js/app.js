@@ -2,8 +2,22 @@
 // and one open campaign. Deep-linked via the hash so a refresh keeps your place.
 
 import * as S from './state.js';
+import * as Y from './sync.js';
 import { renderHome } from './home.js';
 import { renderCampaign, teardownCampaign } from './campaign.js';
+
+// Local mutations on a connected campaign additionally reach the table server.
+S.setMutationHook(Y.onMutation);
+
+// Coming back to the tab is one of the moments the table "meets": pull quietly,
+// and only rebuild the screen if something actually changed.
+document.addEventListener('visibilitychange', () => {
+  if (document.hidden) return;
+  const st = S.getState();
+  if (st && Y.isConnected(st)) {
+    Y.syncNow(st, { quiet: true, minInterval: 20000 }).then(changed => { if (changed) route(); });
+  }
+});
 
 async function route() {
   const hash = location.hash.replace(/^#/, '');

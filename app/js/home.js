@@ -3,7 +3,8 @@
 // discovery — a campaign is as private as the table.
 
 import * as S from './state.js';
-import { el, mount, openSheet, closeSheet, toast, el as _el } from './ui.js';
+import * as Y from './sync.js';
+import { el, mount, openSheet, closeSheet, toast } from './ui.js';
 
 export async function renderHome({ onOpen }) {
   const campaigns = await S.listCampaigns();
@@ -28,6 +29,7 @@ export async function renderHome({ onOpen }) {
       ...cards,
     ]),
     el('div', { class: 'home__foot' }, [
+      el('button', { class: 'btn btn--ghost', text: 'Join a table…', onclick: () => joinFlow(onOpen) }),
       el('button', { class: 'btn btn--ghost', text: 'Import a campaign file…', onclick: () => importFlow(onOpen) }),
     ]),
   ]);
@@ -90,6 +92,32 @@ function openCreate(onOpen) {
   ]);
   openSheet('Start a campaign', body);
   setTimeout(() => nameI.focus(), 50);
+}
+
+// Paste the one-line invite the owner copied from "Table & invite": this device
+// joins the campaign on the table server and the map pulls itself in.
+function joinFlow(onOpen) {
+  const ta = el('textarea', { class: 'input input--area', rows: '3',
+    placeholder: 'Paste the invite line from the campaign owner…' });
+  const go = el('button', { class: 'btn btn--primary', text: 'Join', onclick: async () => {
+    go.disabled = true; go.textContent = 'Joining…';
+    try {
+      const id = await Y.joinCampaign(ta.value);
+      closeSheet();
+      toast('Seated — pick who you are at this table.');
+      onOpen(id);
+    } catch (err) {
+      toast(err.message);
+      go.disabled = false; go.textContent = 'Join';
+    }
+  } });
+  openSheet('Join a table', el('div', {}, [
+    el('p', { class: 'muted', style: { marginTop: 0 },
+      text: 'The campaign stays on your device and syncs with the table whenever you open it.' }),
+    ta,
+    el('div', { class: 'row row--end' }, [go]),
+  ]));
+  setTimeout(() => ta.focus(), 50);
 }
 
 function importFlow(onOpen) {

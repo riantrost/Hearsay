@@ -4,6 +4,7 @@
 // that replays the map's growth. Panels (pin detail, warband, settings) live in panels.js.
 
 import * as S from './state.js';
+import * as Y from './sync.js';
 import { el, clear, mount, toast } from './ui.js';
 import { Viewport } from './viewport.js';
 import { pickImage } from './util.js';
@@ -78,6 +79,14 @@ export async function renderCampaign(state, { onHome }) {
   await loadMap(state);
   paint(state);
   updateBanner(state);
+
+  // Opening the campaign is the table's meeting point: pull quietly, and only
+  // rebuild if the server had something new. minInterval breaks the rerender loop.
+  if (Y.isConnected(state)) {
+    Y.syncNow(state, { quiet: true, minInterval: 4000 }).then(changed => {
+      if (changed && S.getState() === state) rerender(state, refs.ctx);
+    });
+  }
 }
 
 async function loadMap(state) {
@@ -95,12 +104,19 @@ async function loadMap(state) {
   if (existingDrop) existingDrop.remove();
   world.classList.remove('world--nomap');
   const blob = await S.getMapBlob();
-  objectURL = URL.createObjectURL(blob);
-  img.src = objectURL;
   vp.setWorldSize(state.map.w, state.map.h);
   gridCanvas.width = state.map.w;
   gridCanvas.height = state.map.h;
   drawGrid(state);
+  if (!blob) {
+    // A just-joined campaign knows its map's dimensions before the image blob
+    // arrives (next sync brings it). Lay pins out on the empty world meanwhile.
+    img.removeAttribute('src');
+    vp.fit();
+    return;
+  }
+  objectURL = URL.createObjectURL(blob);
+  img.src = objectURL;
   await new Promise(r => { if (img.complete) r(); else img.onload = r; });
   vp.fit();
 }
@@ -217,6 +233,7 @@ function topBar(state, ctx) {
     el('div', { class: 'topbar__title' }, [
       el('strong', { text: state.name }),
       state.concluded ? el('span', { class: 'tag tag--archived', text: 'Archived' }) : null,
+      Y.isConnected(state) ? el('span', { class: 'tag tag--table', title: 'Connected to a table server', text: '⛅ table' }) : null,
     ]),
     el('div', { class: 'topbar__spacer' }),
     isOwner && !state.concluded && state.map
@@ -232,11 +249,22 @@ function topBar(state, ctx) {
 }
 
 function menuButton(state, ctx) {
+  const isOwner = S.getIdentity(state.id) === 'owner';
   const items = [
     ['Warbands', () => openWarbandList(state)],
     ['Settings', () => P.openSettings(state, () => rerender(state, ctx))],
-    ['Export campaign', () => exportNow(state)],
   ];
+  if (Y.isConnected(state)) {
+    items.push(['Table & invite', () => P.openInvite(state)]);
+    items.push(['Sync now', async () => {
+      const changed = await Y.syncNow(state);
+      if (changed) { rerender(state, ctx); toast('Synced — the map moved while you were away.'); }
+      else toast('Up to date with the table.');
+    }]);
+  } else if (isOwner) {
+    items.push(['Publish to table…', () => P.openPublish(state, () => rerender(state, ctx))]);
+  }
+  items.push(['Export campaign', () => exportNow(state)]);
   const menu = el('div', { class: 'menu' }, items.map(([label, fn]) =>
     el('button', { class: 'menu__item', text: label, onclick: () => { menu.classList.remove('menu--open'); fn(); } })));
   const wrap = el('div', { class: 'menuwrap' }, [
