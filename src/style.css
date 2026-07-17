@@ -111,24 +111,141 @@ svg.map { width: 100%; height: 100%; display: block; }
   position: absolute;
   top: 12px;
   left: 12px;
+  max-width: min(340px, 80vw);
   background: rgba(34, 48, 60, 0.92);
   color: #dfe9f0;
-  padding: 8px 12px;
+  padding: 10px 14px;
   border-radius: 4px;
   display: flex;
-  gap: 8px;
-  align-items: center;
+  flex-direction: column;
+  gap: 6px;
 }
-.identity label {
+.identity .seat-line {
   font-variant: small-caps;
   letter-spacing: 1.5px;
-  font-size: 13px;
+  font-size: 14px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
 }
-.identity select {
+.identity button {
   font-family: inherit;
-  background: #f4ede2;
+  font-variant: small-caps;
+  letter-spacing: 1px;
+  font-size: 12px;
+  background: #b8552f;
+  color: #f4ede2;
   border: none;
-  padding: 3px 6px;
+  padding: 2px 10px;
+  cursor: pointer;
+}
+.identity button:hover { background: #9a4526; }
+.identity button.leave,
+.identity button.decline {
+  background: transparent;
+  border: 1px solid #5a7186;
+  color: #9fb4c4;
+}
+.identity button.leave:hover,
+.identity button.decline:hover { border-color: #b8552f; color: #dfe9f0; }
+.identity .pending-hint {
+  font-size: 12px;
+  font-style: italic;
+  color: #9fb4c4;
+}
+.identity .code-row {
+  font-size: 13px;
+  letter-spacing: 1px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.identity .pending-row {
+  font-size: 13px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  border-top: 1px solid #3d5266;
+  padding-top: 6px;
+}
+
+/* landing */
+.landing {
+  height: 100%;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 18px;
+  padding: 48px 20px;
+  color: #dfe9f0;
+}
+.landing h1 {
+  font-size: 42px;
+  letter-spacing: 6px;
+  font-variant: small-caps;
+}
+.landing .tagline {
+  font-style: italic;
+  color: #9fb4c4;
+  text-align: center;
+}
+.landing-card {
+  width: min(420px, 92vw);
+  background: #f4ede2;
+  color: #2b3a47;
+  padding: 20px 22px;
+  border-left: 3px solid #b8552f;
+  box-shadow: 0 6px 24px rgba(10, 16, 22, 0.35);
+}
+.landing-card h2 {
+  font-size: 16px;
+  font-variant: small-caps;
+  letter-spacing: 2px;
+  margin-bottom: 12px;
+}
+.landing-card form {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.landing-card input[type='text'],
+.landing-card input:not([type]) {
+  font-family: inherit;
+  font-size: 15px;
+  padding: 8px 10px;
+  border: 1px solid #c9bda4;
+  background: #faf5ea;
+}
+.landing-card .map-pick {
+  font-size: 13px;
+  font-variant: small-caps;
+  letter-spacing: 1px;
+  color: #6b5744;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.landing-card button {
+  align-self: flex-start;
+  font-family: inherit;
+  font-variant: small-caps;
+  letter-spacing: 1px;
+  font-size: 15px;
+  background: #b8552f;
+  color: #f4ede2;
+  border: none;
+  padding: 7px 18px;
+  cursor: pointer;
+}
+.landing-card button:hover { background: #9a4526; }
+.landing-error {
+  color: #e0a184;
+  font-style: italic;
+}
+.landing-notice {
+  color: #9fb4c4;
+  font-style: italic;
 }
 
 /* write surfaces */

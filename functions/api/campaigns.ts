@@ -3,14 +3,13 @@
 // seat, the owner's bearer token, and the join code in one act.
 
 import type { Campaign, Member } from '../../src/model';
-import { newId } from '../../src/mutations';
+import { newId, newJoinCode } from '../../src/mutations';
 import {
   campaignKey,
   codeKey,
   err,
   MAX_MAP_BYTES,
   memberKey,
-  newJoinCode,
   putRecord,
   tokenKey,
   type Env,

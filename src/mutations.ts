@@ -5,11 +5,19 @@
 // and return the record they touched — the server persists exactly that
 // record, which is what keeps concurrent writers from clobbering each other.
 
-import type { CampaignData, Pin, SiteEvent, Testimony } from './model';
+import type { CampaignData, Member, Pin, SiteEvent, Testimony } from './model';
 import { MARK_MAX_CHARS, MAX_TESTIMONY_CHARS } from './model';
 
 export function newId(prefix: string): string {
   return `${prefix}${crypto.randomUUID().replaceAll('-', '').slice(0, 12)}`;
+}
+
+/** No-lookalike alphabet; six characters is plenty for a table-sized secret. */
+const CODE_ALPHABET = 'ABCDEFGHJKMNPQRSTVWXYZ23456789';
+
+export function newJoinCode(): string {
+  const bytes = crypto.getRandomValues(new Uint8Array(6));
+  return [...bytes].map((b) => CODE_ALPHABET[b % CODE_ALPHABET.length]).join('');
 }
 
 /**
@@ -42,6 +50,37 @@ export function visibleData(data: CampaignData, viewerId: string): CampaignData 
  */
 export function canEditTestimony(data: CampaignData, t: Testimony): boolean {
   return !data.events.some((e) => e.session > t.session);
+}
+
+// --- membership layer (owner acts; the proposal pattern resolves) ---
+
+/** Approval makes a pending member's posts visible to the table. Idempotent. */
+export function approveMember(data: CampaignData, memberId: string): Member {
+  const member = data.members.find((m) => m.id === memberId);
+  if (!member) throw new Error('no such member');
+  member.status = 'active';
+  return member;
+}
+
+/**
+ * Decline a pending membership: the proposal is refused, and the words that
+ * were never table-visible leave with it. Active members can't be declined —
+ * removing a seated player is a different act, and not a V1 one.
+ */
+export function declineMember(data: CampaignData, memberId: string): { member: Member; removedTestimonyIds: string[] } {
+  const member = data.members.find((m) => m.id === memberId);
+  if (!member) throw new Error('no such member');
+  if (member.status !== 'pending') throw new Error('only a pending membership can be declined');
+  data.members = data.members.filter((m) => m.id !== memberId);
+  const removedTestimonyIds = data.testimony.filter((t) => t.memberId === memberId).map((t) => t.id);
+  data.testimony = data.testimony.filter((t) => t.memberId !== memberId);
+  return { member, removedTestimonyIds };
+}
+
+/** Mint a fresh join code; codes shared before the rotation stop working. */
+export function rotateJoinCode(data: CampaignData): string {
+  data.campaign.joinCode = newJoinCode();
+  return data.campaign.joinCode;
 }
 
 // --- canon layer (owner acts) ---

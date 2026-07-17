@@ -2,16 +2,15 @@
 // (graffiti, unattributed at a glance), then events in session order with
 // testimony. When viewing the present, it is also the write surface: open
 // slots take words, your fresh entries stay editable until the table's clock
-// closes them. A pending member's words render only for themselves and the
-// owner — everyone else sees an open slot.
+// closes them. Visibility is the server's job: data arrives already shaped
+// to the viewer's seat, so a withheld entry simply reads as an open slot.
 
+import type { ApiStore } from '../apiStore';
 import type { CampaignData } from '../model';
 import { MARK_MAX_CHARS } from '../model';
-import type { Store } from '../store';
-import { testimonyVisibleTo } from '../store';
 
 export interface SurfaceContext {
-  store: Store;
+  store: ApiStore;
   pinId: string;
   session: number;
   viewerId: string;
@@ -40,6 +39,8 @@ function lineForm(placeholder: string, button: string, onSubmit: (value: string)
   return form;
 }
 
+const oops = (e: unknown) => alert(e instanceof Error ? e.message : String(e));
+
 export function renderPinSurface(host: HTMLElement, ctx: SurfaceContext): void {
   const { store, pinId, session, viewerId } = ctx;
   const data: CampaignData = store.data;
@@ -51,8 +52,7 @@ export function renderPinSurface(host: HTMLElement, ctx: SurfaceContext): void {
   }
   host.hidden = false;
 
-  const viewer = data.members.find((m) => m.id === viewerId);
-  const isOwner = viewer?.role === 'owner';
+  const isOwner = store.me?.role === 'owner';
   // the past is read-only: writing happens only at the table's current session
   const writable = session === data.campaign.currentSession;
 
@@ -60,9 +60,7 @@ export function renderPinSurface(host: HTMLElement, ctx: SurfaceContext): void {
     .filter((e) => e.pinId === pinId && e.session <= session)
     .sort((a, b) => a.session - b.session);
   const eventIds = new Set(events.map((e) => e.id));
-  const marks = data.testimony.filter(
-    (t) => t.markText && eventIds.has(t.eventId) && t.session <= session && testimonyVisibleTo(data, t, viewerId),
-  );
+  const marks = data.testimony.filter((t) => t.markText && eventIds.has(t.eventId) && t.session <= session);
 
   const frag = document.createDocumentFragment();
   frag.appendChild(el('h2', undefined, pin.name));
@@ -79,10 +77,7 @@ export function renderPinSurface(host: HTMLElement, ctx: SurfaceContext): void {
 
     for (const memberId of event.participantIds) {
       const member = data.members.find((m) => m.id === memberId);
-      const found = data.testimony.find((t) => t.eventId === event.id && t.memberId === memberId);
-      // a pending member's entry exists only for its author and the owner;
-      // to everyone else the slot reads as open
-      const entry = found && testimonyVisibleTo(data, found, viewerId) ? found : undefined;
+      const entry = data.testimony.find((t) => t.eventId === event.id && t.memberId === memberId);
       const mine = memberId === viewerId;
 
       const t = el('div', 'testimony' + (entry ? '' : ' empty'));
@@ -94,18 +89,14 @@ export function renderPinSurface(host: HTMLElement, ctx: SurfaceContext): void {
         area.value = entry.text;
         const save = el('button', undefined, 'amend');
         save.addEventListener('click', () => {
-          if (area.value.trim()) store.writeTestimony(event.id, memberId, area.value.trim());
+          if (area.value.trim()) store.writeTestimony(event.id, area.value.trim()).catch(oops);
         });
         const hint = el('p', 'grace-hint', 'open until the next session begins');
         t.append(area, save, hint);
         if (!entry.markText) {
           t.appendChild(
             lineForm(`leave a mark on this place (${MARK_MAX_CHARS} chars)`, 'scrawl', (v) => {
-              try {
-                store.promoteMark(entry.id, memberId, v);
-              } catch (err) {
-                alert(err instanceof Error ? err.message : String(err));
-              }
+              store.promoteMark(entry.id, v).catch(oops);
             }, MARK_MAX_CHARS),
           );
         }
@@ -116,7 +107,7 @@ export function renderPinSurface(host: HTMLElement, ctx: SurfaceContext): void {
         area.placeholder = 'what happened here, as you remember it';
         const save = el('button', undefined, 'testify');
         save.addEventListener('click', () => {
-          if (area.value.trim()) store.writeTestimony(event.id, memberId, area.value.trim());
+          if (area.value.trim()) store.writeTestimony(event.id, area.value.trim()).catch(oops);
         });
         t.append(area, save);
       } else {
@@ -130,7 +121,9 @@ export function renderPinSurface(host: HTMLElement, ctx: SurfaceContext): void {
   if (isOwner && writable) {
     const add = el('section', 'add-event');
     add.appendChild(el('h3', undefined, `New event · Session ${data.campaign.currentSession}`));
-    add.appendChild(lineForm('one line of canon: what happened here', 'drop it', (v) => store.addEvent(pinId, v)));
+    add.appendChild(lineForm('one line of canon: what happened here', 'drop it', (v) => {
+      store.addEvent(pinId, v).catch(oops);
+    }));
     frag.appendChild(add);
   }
 

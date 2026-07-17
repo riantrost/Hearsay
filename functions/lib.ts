@@ -37,14 +37,6 @@ export interface TokenRecord {
   memberId: string;
 }
 
-/** No-lookalike alphabet; six characters is plenty for a table-sized secret. */
-const CODE_ALPHABET = 'ABCDEFGHJKMNPQRSTVWXYZ23456789';
-
-export function newJoinCode(): string {
-  const bytes = crypto.getRandomValues(new Uint8Array(6));
-  return [...bytes].map((b) => CODE_ALPHABET[b % CODE_ALPHABET.length]).join('');
-}
-
 export async function putRecord(env: Env, key: string, record: unknown): Promise<void> {
   await env.HEARSAY.put(key, JSON.stringify(record));
 }
