@@ -6,7 +6,7 @@
 // record, which is what keeps concurrent writers from clobbering each other.
 
 import type { CampaignData, Member, Pin, SiteEvent, Testimony } from './model';
-import { MARK_MAX_CHARS, MAX_TESTIMONY_CHARS } from './model';
+import { MARK_MAX_CHARS, MAX_ATMOSPHERE_CHARS, MAX_TESTIMONY_CHARS } from './model';
 
 export function newId(prefix: string): string {
   return `${prefix}${crypto.randomUUID().replaceAll('-', '').slice(0, 12)}`;
@@ -108,10 +108,20 @@ export function addPin(data: CampaignData, x: number, y: number, name: string): 
   return pin;
 }
 
-export function addEvent(data: CampaignData, pinId: string, canonLine: string, participantIds?: string[]): SiteEvent {
+export function addEvent(
+  data: CampaignData,
+  pinId: string,
+  canonLine: string,
+  participantIds?: string[],
+  atmosphere?: string,
+): SiteEvent {
   if (!data.pins.some((p) => p.id === pinId)) throw new Error('no such pin');
   const line = canonLine.trim();
   if (!line) throw new Error('an event needs its line of canon');
+  const air = atmosphere?.trim();
+  if (air && air.length > MAX_ATMOSPHERE_CHARS) {
+    throw new Error(`atmosphere sets a scene, not a chapter: ${MAX_ATMOSPHERE_CHARS} characters at most`);
+  }
   const memberIds = new Set(data.members.map((m) => m.id));
   if (participantIds?.some((id) => !memberIds.has(id))) throw new Error('unknown participant');
   const event: SiteEvent = {
@@ -119,6 +129,7 @@ export function addEvent(data: CampaignData, pinId: string, canonLine: string, p
     pinId,
     session: data.campaign.currentSession,
     canonLine: line,
+    ...(air ? { atmosphere: air } : {}),
     // everyone at the table by default; the owner may also play
     participantIds: participantIds ?? data.members.map((m) => m.id),
   };
@@ -149,11 +160,11 @@ export function setPinHidden(data: CampaignData, pinId: string, hidden: boolean)
  * session, stamped so the scrubber replays its arrival, and the canon line
  * says what the table now knows.
  */
-export function revealPin(data: CampaignData, pinId: string, canonLine: string): { pin: Pin; event: SiteEvent } {
+export function revealPin(data: CampaignData, pinId: string, canonLine: string, atmosphere?: string): { pin: Pin; event: SiteEvent } {
   const pin = data.pins.find((p) => p.id === pinId);
   if (!pin) throw new Error('no such pin');
   if (!pin.hidden) throw new Error('this place is not staged');
-  const event = addEvent(data, pinId, canonLine);
+  const event = addEvent(data, pinId, canonLine, undefined, atmosphere);
   delete pin.hidden;
   pin.hiddenUntilSession = data.campaign.currentSession;
   return { pin, event };

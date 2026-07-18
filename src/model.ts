@@ -52,6 +52,12 @@ export interface SiteEvent {
   pinId: string;
   session: number;
   canonLine: string;
+  /**
+   * Optional owner-authored prose under the headline — the air of the place.
+   * The canon line stays the crisp one-line record; atmosphere is where the
+   * owner's voice gets room without competing with testimony's format.
+   */
+  atmosphere?: string;
   participantIds: string[];
 }
 
@@ -67,6 +73,7 @@ export interface Testimony {
 
 export const MARK_MAX_CHARS = 100;
 export const MAX_TESTIMONY_CHARS = 5000;
+export const MAX_ATMOSPHERE_CHARS = 1200;
 
 export interface CampaignData {
   campaign: Campaign;

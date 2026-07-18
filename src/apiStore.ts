@@ -80,16 +80,16 @@ export class ApiStore {
   }
 
   /** Reveal a staged pin to the table — the reveal is itself a timeline event. */
-  async revealPin(pinId: string, canonLine: string): Promise<Pin> {
-    const { pin, event } = await api.postPinReveal(this.seat, pinId, canonLine);
+  async revealPin(pinId: string, canonLine: string, atmosphere?: string): Promise<Pin> {
+    const { pin, event } = await api.postPinReveal(this.seat, pinId, canonLine, atmosphere);
     this.replacePin(pin);
     this.data.events.push(event);
     this.notify();
     return pin;
   }
 
-  async addEvent(pinId: string, canonLine: string): Promise<SiteEvent> {
-    const event = await api.postEvent(this.seat, pinId, canonLine);
+  async addEvent(pinId: string, canonLine: string, atmosphere?: string): Promise<SiteEvent> {
+    const event = await api.postEvent(this.seat, pinId, canonLine, atmosphere);
     this.data.events.push(event);
     this.notify();
     return event;

@@ -25,7 +25,7 @@ export const onRequestPost: PagesFunction<Env> = async ({ request, env, params }
   const notOwner = requireOwner(seat);
   if (notOwner) return notOwner;
 
-  const body = await readJson<{ action?: unknown; canonLine?: unknown }>(request);
+  const body = await readJson<{ action?: unknown; canonLine?: unknown; atmosphere?: unknown }>(request);
   try {
     if (body?.action === 'hide' || body?.action === 'unhide') {
       const pin = setPinHidden(seat.data, pid, body.action === 'hide');
@@ -34,7 +34,8 @@ export const onRequestPost: PagesFunction<Env> = async ({ request, env, params }
     }
     if (body?.action === 'reveal') {
       if (typeof body.canonLine !== 'string') return mutationError(new Error('a reveal needs its line of canon'));
-      const { pin, event } = revealPin(seat.data, pid, body.canonLine);
+      if (body.atmosphere !== undefined && typeof body.atmosphere !== 'string') return mutationError(new Error('malformed reveal'));
+      const { pin, event } = revealPin(seat.data, pid, body.canonLine, body.atmosphere);
       await putRecord(env, pinKey(cid, pin.id), pin);
       await putRecord(env, eventKey(cid, event.id), event);
       return Response.json({ pin, event });

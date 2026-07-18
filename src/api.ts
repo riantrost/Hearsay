@@ -72,15 +72,15 @@ export async function postPinHidden(seat: Seat, pinId: string, hidden: boolean):
   return (await (await post(seat, `/pins/${encodeURIComponent(pinId)}`, { action: hidden ? 'hide' : 'unhide' })).json()) as Pin;
 }
 
-export async function postPinReveal(seat: Seat, pinId: string, canonLine: string): Promise<{ pin: Pin; event: SiteEvent }> {
-  return (await (await post(seat, `/pins/${encodeURIComponent(pinId)}`, { action: 'reveal', canonLine })).json()) as {
+export async function postPinReveal(seat: Seat, pinId: string, canonLine: string, atmosphere?: string): Promise<{ pin: Pin; event: SiteEvent }> {
+  return (await (await post(seat, `/pins/${encodeURIComponent(pinId)}`, { action: 'reveal', canonLine, atmosphere })).json()) as {
     pin: Pin;
     event: SiteEvent;
   };
 }
 
-export async function postEvent(seat: Seat, pinId: string, canonLine: string): Promise<SiteEvent> {
-  return (await (await post(seat, '/events', { pinId, canonLine })).json()) as SiteEvent;
+export async function postEvent(seat: Seat, pinId: string, canonLine: string, atmosphere?: string): Promise<SiteEvent> {
+  return (await (await post(seat, '/events', { pinId, canonLine, atmosphere })).json()) as SiteEvent;
 }
 
 export async function postSession(seat: Seat): Promise<number> {

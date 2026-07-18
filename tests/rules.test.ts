@@ -6,7 +6,7 @@
 
 import { beforeEach, describe, expect, it } from 'vitest';
 import { seed } from '../src/data/seed';
-import { MARK_MAX_CHARS, type CampaignData } from '../src/model';
+import { MARK_MAX_CHARS, MAX_ATMOSPHERE_CHARS, type CampaignData } from '../src/model';
 import {
   addEvent,
   addPin,
@@ -15,7 +15,9 @@ import {
   canEditTestimony,
   declineMember,
   promoteMark,
+  revealPin,
   rotateJoinCode,
+  setPinHidden,
   testimonyVisibleTo,
   visibleData,
   writeTestimony,
@@ -145,5 +147,28 @@ describe('canon acts', () => {
     // the server runs the same mutation layer, so these are its 4xx responses
     expect(() => addEvent(data, 'p999', 'a rumor with no place')).toThrow(/no such pin/);
     expect(() => addEvent(data, 'p4', 'a duel of strangers', ['m999'])).toThrow(/unknown participant/);
+  });
+});
+
+describe('atmosphere (headline canon plus optional prose)', () => {
+  it('stores trimmed atmosphere on the event when given', () => {
+    const event = addEvent(data, 'p4', 'a skirmish at the fen edge', undefined, '  mist over the reeds, and something breathing in it  ');
+    expect(event.atmosphere).toBe('mist over the reeds, and something breathing in it');
+  });
+
+  it('leaves the field absent when omitted or blank', () => {
+    expect(addEvent(data, 'p4', 'plain record').atmosphere).toBeUndefined();
+    expect(addEvent(data, 'p4', 'blank air', undefined, '   ').atmosphere).toBeUndefined();
+  });
+
+  it('caps atmosphere — a scene, not a chapter', () => {
+    expect(() => addEvent(data, 'p4', 'line', undefined, 'x'.repeat(MAX_ATMOSPHERE_CHARS + 1))).toThrow(/chapter/);
+  });
+
+  it('a reveal carries atmosphere onto its timeline event', () => {
+    const pin = addPin(data, 0.5, 0.5, 'the drowned chapel');
+    setPinHidden(data, pin.id, true);
+    const { event } = revealPin(data, pin.id, 'the chapel surfaces from the fen', 'candles that never went out');
+    expect(event.atmosphere).toBe('candles that never went out');
   });
 });

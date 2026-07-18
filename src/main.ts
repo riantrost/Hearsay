@@ -51,6 +51,15 @@ function renderTable(store: ApiStore): void {
     <div class="map-host"></div>
     <aside class="pin-surface" hidden></aside>
     <header class="identity"></header>
+    <button class="help-btn" title="how this works">?</button>
+    <div class="help-overlay" hidden>
+      <div class="help-card">
+        <h2>How Hearsay works</h2>
+        <div class="help-body"></div>
+        <button class="help-close">got it</button>
+      </div>
+    </div>
+    <div class="map-hint" hidden>name your first place — press ＋ Pin, then tap the map</div>
     <div class="placebar" hidden>
       <span class="placebar-dot"></span>
       <span>Tap the map where it happened</span>
@@ -61,7 +70,8 @@ function renderTable(store: ApiStore): void {
       <span class="pastbar-text"></span>
       <button class="pastbar-now">return to now</button>
     </div>
-    <footer class="scrubber">
+    <footer class="scrubber collapsed">
+      <button class="scrubber-pill" hidden></button>
       <span class="scrubber-label"></span>
       <input type="range" min="1" step="1" list="session-ticks" />
       <datalist id="session-ticks"></datalist>
@@ -77,12 +87,19 @@ function renderTable(store: ApiStore): void {
   const pastbar = app.querySelector<HTMLElement>('.pastbar')!;
   const pastbarText = pastbar.querySelector<HTMLElement>('.pastbar-text')!;
   const ticks = app.querySelector<HTMLDataListElement>('#session-ticks')!;
+  const scrubber = app.querySelector<HTMLElement>('.scrubber')!;
+  const scrubberPill = app.querySelector<HTMLButtonElement>('.scrubber-pill')!;
   const slider = app.querySelector<HTMLInputElement>('.scrubber input')!;
   const sliderLabel = app.querySelector<HTMLElement>('.scrubber-label')!;
   const advanceBtn = app.querySelector<HTMLButtonElement>('.advance')!;
+  const helpBtn = app.querySelector<HTMLButtonElement>('.help-btn')!;
+  const helpOverlay = app.querySelector<HTMLElement>('.help-overlay')!;
+  const mapHint = app.querySelector<HTMLElement>('.map-hint')!;
 
   let session = store.data.campaign.currentSession;
   let selectedPinId: string | null = null;
+  // the scrubber sleeps as a pill until someone deliberately opens the past
+  let scrubberOpen = false;
   // dropping a pin is a deliberate act, never a byproduct of touching the map:
   // the owner arms placement, and the *next* map tap places, then disarms
   let placing = false;
@@ -135,6 +152,38 @@ function renderTable(store: ApiStore): void {
 
   placeBtn.addEventListener('click', () => setPlacing(!placing));
   placebar.querySelector('.placebar-cancel')!.addEventListener('click', () => setPlacing(false));
+
+  // the flow, explained in place — placeholder text alone leaves first-timers
+  // guessing, so the ? opens a role-shaped account of the loop
+  helpOverlay.querySelector<HTMLElement>('.help-body')!.innerHTML = isOwner()
+    ? `<ul>
+        <li><b>You own the world.</b> Press <b>＋ Pin</b>, then tap the map to name a place.</li>
+        <li>Open a place to <b>drop an event</b>: one line of canon (the headline), plus optional atmosphere prose. Events are what players testify to.</li>
+        <li><b>Stage in secret</b> preps a place only you can see; a <b>reveal</b> brings it to the table as a timeline event.</li>
+        <li><b>Begin session</b> advances the campaign clock. Testimony on past sessions closes once the new session's first event lands.</li>
+        <li>Share the <b>join code</b> freely — joiners write immediately, but their words reach the table only after you approve them.</li>
+        <li>Once history spans sessions, the <b>session pill</b> (bottom) scrubs the map back through time.</li>
+      </ul>`
+    : `<ul>
+        <li><b>Tap a pin</b> to read a place's history — the owner's canon first, then every seat's testimony.</li>
+        <li><b>Testify</b> in your own words: what happened here, as you remember it. Your account is yours alone; contradiction is welcome.</li>
+        <li>You can <b>amend</b> your entry until the next session begins — then it closes for good.</li>
+        <li><b>Scrawl a mark</b>: one short line from your testimony left as graffiti on the place, unattributed at a glance.</li>
+        <li>Hollow pips on a pin are <b>voices still missing</b> from its latest events.</li>
+        <li>Once history spans sessions, the <b>session pill</b> (bottom) scrubs the map back through time.</li>
+      </ul>`;
+  helpBtn.addEventListener('click', () => {
+    helpOverlay.hidden = false;
+  });
+  helpOverlay.addEventListener('click', (ev) => {
+    const t = ev.target as Element;
+    if (t === helpOverlay || t.closest('.help-close')) helpOverlay.hidden = true;
+  });
+
+  scrubberPill.addEventListener('click', () => {
+    scrubberOpen = !scrubberOpen;
+    render();
+  });
 
   function renderIdentity(): void {
     const me = store.me;
@@ -200,9 +249,10 @@ function renderTable(store: ApiStore): void {
     renderMap(mapHost, store.data, {
       session,
       selectedPinId,
-      // the owner sees unwritten sites at the present, so a named place
-      // can always receive its first event
-      withGhosts: isOwner() && session === store.data.campaign.currentSession,
+      // the owner's scaffolding (ghosts, staged pins) is prep, outside the
+      // timeline — it stays on their map at any viewed session, so a scrub
+      // can never make the secret layer vanish
+      withGhosts: isOwner(),
     });
     viewport.apply();
     renderIdentity();
@@ -213,9 +263,20 @@ function renderTable(store: ApiStore): void {
     placeBtn.textContent = placing ? '✕ cancel' : '＋ Pin';
     placebar.hidden = !placing;
     mapHost.classList.toggle('placing', placing);
+    // a fresh table gets one nudge toward its first act
+    mapHint.hidden = !(isOwner() && store.data.pins.length === 0 && !placing);
     // the scrubber: dragging back reads the map as it stood, plainly signposted
     const present = store.data.campaign.currentSession;
     const past = session < present;
+    // ...but it sleeps as a pill (and doesn't exist at all before history
+    // spans sessions) — the timeline is there when reached for, not a bar
+    // permanently served to every seat
+    const hasHistory = present > 1;
+    if (!hasHistory) scrubberOpen = false;
+    scrubber.hidden = !hasHistory && !isOwner();
+    scrubberPill.hidden = !hasHistory;
+    scrubber.classList.toggle('collapsed', !scrubberOpen);
+    scrubberPill.textContent = scrubberOpen ? 'close' : past ? `⟲ session ${session} of ${present}` : `⟲ session ${present}`;
     pastbar.hidden = !past;
     if (past) pastbarText.textContent = `the map as it stood after session ${session}`;
     mapHost.classList.toggle('past', past);
@@ -241,6 +302,35 @@ function renderTable(store: ApiStore): void {
     syncPoll();
   }
 
+  // Store-driven re-renders (poll, focus refetch) rebuild the DOM wholesale.
+  // If one lands mid-click — between mousedown and mouseup — the pressed
+  // button is replaced and the click never dispatches, so every button
+  // sporadically "needs two clicks". Defer those renders while a pointer is
+  // down, and flush a beat after it lifts so the click lands first. The
+  // user's own acts still render directly: their handlers run post-gesture.
+  let gestureActive = false;
+  let renderQueued = false;
+  function scheduleRender(): void {
+    if (gestureActive) {
+      renderQueued = true;
+      return;
+    }
+    render();
+  }
+  window.addEventListener('pointerdown', () => {
+    gestureActive = true;
+  }, { capture: true, signal });
+  const endGesture = (): void => {
+    gestureActive = false;
+    if (renderQueued) {
+      renderQueued = false;
+      // a macrotask later: pointerup → mouseup → click have all dispatched
+      setTimeout(scheduleRender, 0);
+    }
+  };
+  window.addEventListener('pointerup', endGesture, { capture: true, signal });
+  window.addEventListener('pointercancel', endGesture, { capture: true, signal });
+
   // the view follows the table's clock only when standing at it: a remote
   // advance carries a present-viewer forward, but never yanks a reader out
   // of the past mid-scrub (their own acts — advancing, writing — are all
@@ -250,7 +340,7 @@ function renderTable(store: ApiStore): void {
     const present = store.data.campaign.currentSession;
     if (session >= knownPresent) session = present;
     knownPresent = present;
-    render();
+    scheduleRender();
   });
 
   pastbar.querySelector('.pastbar-now')!.addEventListener('click', () => {

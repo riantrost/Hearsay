@@ -11,8 +11,15 @@
 
 import type { ApiStore } from '../apiStore';
 import type { CampaignData } from '../model';
-import { MARK_MAX_CHARS } from '../model';
+import { MARK_MAX_CHARS, MAX_ATMOSPHERE_CHARS } from '../model';
 import { siteMarks } from './render';
+
+/**
+ * Editors the viewer has deliberately opened (amend / scrawl), keyed so they
+ * survive the wholesale re-renders. Closed editors are the default: a written
+ * entry reads as text, not as a form asking to be rewritten.
+ */
+const openEditors = new Set<string>();
 
 export interface SurfaceContext {
   store: ApiStore;
@@ -53,6 +60,39 @@ function lineForm(placeholder: string, button: string, onSubmit: (value: string)
 
 const oops = (e: unknown) => alert(e instanceof Error ? e.message : String(e));
 
+/**
+ * Canon authorship: the one-line headline plus optional atmosphere prose.
+ * Submit clears both optimistically; a refused submit puts the words back.
+ */
+function canonForm(
+  canonPlaceholder: string,
+  button: string,
+  onSubmit: (canon: string, atmosphere: string | undefined) => Promise<unknown>,
+): HTMLFormElement {
+  const form = el('form', 'canon-form');
+  const input = el('input');
+  input.placeholder = canonPlaceholder;
+  const air = el('textarea');
+  air.placeholder = 'the air of the place — optional';
+  air.maxLength = MAX_ATMOSPHERE_CHARS;
+  const btn = el('button', undefined, button);
+  form.append(input, air, btn);
+  form.addEventListener('submit', (ev) => {
+    ev.preventDefault();
+    const canon = input.value.trim();
+    if (!canon) return;
+    const atmosphere = air.value.trim() || undefined;
+    input.value = '';
+    air.value = '';
+    onSubmit(canon, atmosphere).catch((e: unknown) => {
+      input.value = canon;
+      air.value = atmosphere ?? '';
+      oops(e);
+    });
+  });
+  return form;
+}
+
 interface Draft {
   value: string;
   focused: boolean;
@@ -91,6 +131,7 @@ function restoreFocus(host: HTMLElement, drafts: Map<string, Draft>): void {
 
 export function renderPinSurface(host: HTMLElement, ctx: SurfaceContext): void {
   const { store, pinId, session, viewerId } = ctx;
+  const rerender = (): void => renderPinSurface(host, ctx);
   const data: CampaignData = store.data;
   const pin = data.pins.find((p) => p.id === pinId);
   if (!pin) {
@@ -138,9 +179,10 @@ export function renderPinSurface(host: HTMLElement, ctx: SurfaceContext): void {
     // lands as a timeline event.
     frag.appendChild(el('p', 'staged-hint', 'staged — the table cannot see this place'));
     if (writable) {
-      const revealForm = lineForm('what the table now learns', 'reveal', (v) => store.revealPin(pinId, v));
+      const revealForm = canonForm('what the table now learns', 'reveal', (v, air) => store.revealPin(pinId, v, air));
       revealForm.classList.add('reveal-form');
       applyDraft(revealForm.querySelector('input')!, `reveal:${pinId}`);
+      applyDraft(revealForm.querySelector('textarea')!, `reveal-air:${pinId}`);
       frag.appendChild(revealForm);
       if (events.length === 0 && data.events.every((e) => e.pinId !== pinId)) {
         const unstage = el('button', 'stage-toggle', 'unstage');
@@ -158,11 +200,6 @@ export function renderPinSurface(host: HTMLElement, ctx: SurfaceContext): void {
     }
   }
 
-  // marks first: what you find scrawled at the site before you know its story
-  for (const mark of marks) {
-    frag.appendChild(el('p', 'mark', `someone scrawled here: “${mark.markText}”`));
-  }
-
   for (const event of events) {
     // the event still unfolding at the table's present reads warm; jacks in
     // the header mirror the map's grammar — solid voices in, hollow waiting
@@ -177,7 +214,9 @@ export function renderPinSurface(host: HTMLElement, ctx: SurfaceContext): void {
     }
     head.appendChild(jacks);
     sec.appendChild(head);
+    // canon leads: the owner's record is the anchor every testimony hangs from
     sec.appendChild(el('p', 'event-canon', event.canonLine));
+    if (event.atmosphere) sec.appendChild(el('p', 'event-atmosphere', event.atmosphere));
 
     for (const memberId of event.participantIds) {
       const member = data.members.find((m) => m.id === memberId);
@@ -188,17 +227,52 @@ export function renderPinSurface(host: HTMLElement, ctx: SurfaceContext): void {
       t.appendChild(el('span', 'testimony-author', member?.name ?? '?'));
 
       if (entry && mine && writable && store.canEdit(entry)) {
-        // still in the grace window: the author may amend
-        const area = el('textarea');
-        applyDraft(area, `testimony:${event.id}`, entry.text);
-        const save = el('button', undefined, 'amend');
-        save.addEventListener('click', () => {
-          if (area.value.trim()) store.writeTestimony(event.id, area.value.trim()).catch(oops);
-        });
-        const hint = el('p', 'grace-hint', 'open until the next session begins');
-        t.append(area, save, hint);
-        if (!entry.markText) {
-          const markForm = lineForm(`leave a mark on this place (${MARK_MAX_CHARS} chars)`, 'scrawl', (v) => store.promoteMark(entry.id, v), MARK_MAX_CHARS);
+        // still in the grace window — but a written entry reads as text by
+        // default; the author opens the editor deliberately
+        const editKey = `edit:${event.id}`;
+        const markKey = `mark-open:${entry.id}`;
+        if (openEditors.has(editKey)) {
+          const area = el('textarea');
+          applyDraft(area, `testimony:${event.id}`, entry.text);
+          const save = el('button', undefined, 'amend');
+          save.addEventListener('click', () => {
+            if (!area.value.trim()) return;
+            store
+              .writeTestimony(event.id, area.value.trim())
+              .then(() => {
+                openEditors.delete(editKey);
+                rerender();
+              })
+              .catch(oops);
+          });
+          const hint = el('p', 'grace-hint', 'open until the next session begins');
+          t.append(area, save, hint);
+        } else {
+          t.appendChild(el('p', undefined, entry.text));
+          const row = el('div', 'entry-acts');
+          const amend = el('button', 'act', 'amend');
+          amend.addEventListener('click', () => {
+            openEditors.add(editKey);
+            rerender();
+          });
+          row.appendChild(amend);
+          if (!entry.markText && !openEditors.has(markKey)) {
+            const scrawl = el('button', 'act', 'scrawl a mark');
+            scrawl.addEventListener('click', () => {
+              openEditors.add(markKey);
+              rerender();
+            });
+            row.appendChild(scrawl);
+          }
+          t.appendChild(row);
+        }
+        if (!entry.markText && openEditors.has(markKey)) {
+          const markForm = lineForm(`leave a mark on this place (${MARK_MAX_CHARS} chars)`, 'scrawl', (v) =>
+            store.promoteMark(entry.id, v).then(() => {
+              openEditors.delete(markKey);
+              rerender();
+            }),
+          MARK_MAX_CHARS);
           applyDraft(markForm.querySelector('input')!, `mark:${entry.id}`);
           t.appendChild(markForm);
         }
@@ -221,11 +295,21 @@ export function renderPinSurface(host: HTMLElement, ctx: SurfaceContext): void {
     frag.appendChild(sec);
   }
 
+  // graffiti follows the record: what's scrawled at the site, after its story
+  if (marks.length > 0) {
+    const found = el('section', 'marks-found');
+    for (const mark of marks) {
+      found.appendChild(el('p', 'mark', `someone scrawled here: “${mark.markText}”`));
+    }
+    frag.appendChild(found);
+  }
+
   if (isOwner && writable) {
     const add = el('section', 'add-event');
     add.appendChild(el('h3', undefined, `New event · Session ${data.campaign.currentSession}`));
-    const eventForm = lineForm('one line of canon: what happened here', 'drop it', (v) => store.addEvent(pinId, v));
+    const eventForm = canonForm('one line of canon: what happened here', 'drop it', (v, air) => store.addEvent(pinId, v, air));
     applyDraft(eventForm.querySelector('input')!, `event:${pinId}`);
+    applyDraft(eventForm.querySelector('textarea')!, `event-air:${pinId}`);
     add.appendChild(eventForm);
     frag.appendChild(add);
   }
