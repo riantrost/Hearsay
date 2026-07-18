@@ -57,9 +57,14 @@ function renderTable(store: ApiStore): void {
       <button class="placebar-cancel">cancel</button>
     </div>
     <button class="place-btn" hidden>＋ Pin</button>
+    <div class="pastbar" hidden>
+      <span class="pastbar-text"></span>
+      <button class="pastbar-now">return to now</button>
+    </div>
     <footer class="scrubber">
       <span class="scrubber-label"></span>
-      <input type="range" min="1" step="1" />
+      <input type="range" min="1" step="1" list="session-ticks" />
+      <datalist id="session-ticks"></datalist>
       <button class="advance" hidden>begin session</button>
     </footer>
   `;
@@ -69,6 +74,9 @@ function renderTable(store: ApiStore): void {
   const identity = app.querySelector<HTMLElement>('.identity')!;
   const placebar = app.querySelector<HTMLElement>('.placebar')!;
   const placeBtn = app.querySelector<HTMLButtonElement>('.place-btn')!;
+  const pastbar = app.querySelector<HTMLElement>('.pastbar')!;
+  const pastbarText = pastbar.querySelector<HTMLElement>('.pastbar-text')!;
+  const ticks = app.querySelector<HTMLDataListElement>('#session-ticks')!;
   const slider = app.querySelector<HTMLInputElement>('.scrubber input')!;
   const sliderLabel = app.querySelector<HTMLElement>('.scrubber-label')!;
   const advanceBtn = app.querySelector<HTMLButtonElement>('.advance')!;
@@ -205,8 +213,27 @@ function renderTable(store: ApiStore): void {
     placeBtn.textContent = placing ? '✕ cancel' : '＋ Pin';
     placebar.hidden = !placing;
     mapHost.classList.toggle('placing', placing);
-    slider.max = String(store.data.campaign.currentSession);
-    sliderLabel.textContent = `Session ${session}`;
+    // the scrubber: dragging back reads the map as it stood, plainly signposted
+    const present = store.data.campaign.currentSession;
+    const past = session < present;
+    pastbar.hidden = !past;
+    if (past) pastbarText.textContent = `the map as it stood after session ${session}`;
+    mapHost.classList.toggle('past', past);
+    app.querySelector('.scrubber')!.classList.toggle('past', past);
+    if (ticks.children.length !== present) {
+      ticks.replaceChildren(
+        ...Array.from({ length: present }, (_, i) => {
+          const o = document.createElement('option');
+          o.value = String(i + 1);
+          return o;
+        }),
+      );
+    }
+    // max before value: a range input clamps, so raising the ceiling first
+    // lets the thumb follow a remote advance instead of sticking below it
+    slider.max = String(present);
+    slider.value = String(session);
+    sliderLabel.textContent = past ? `Session ${session} of ${present}` : `Session ${session}`;
     advanceBtn.hidden = !isOwner();
     advanceBtn.textContent = `begin session ${store.data.campaign.currentSession + 1}`;
     if (selectedPinId) renderPinSurface(surface, { store, pinId: selectedPinId, session, viewerId });
@@ -214,10 +241,20 @@ function renderTable(store: ApiStore): void {
     syncPoll();
   }
 
+  // the view follows the table's clock only when standing at it: a remote
+  // advance carries a present-viewer forward, but never yanks a reader out
+  // of the past mid-scrub (their own acts — advancing, writing — are all
+  // present-only and set the session explicitly)
+  let knownPresent = store.data.campaign.currentSession;
   store.subscribe(() => {
-    // a write at the table snaps the view back to the present
-    session = Math.max(session, store.data.campaign.currentSession);
-    slider.value = String(session);
+    const present = store.data.campaign.currentSession;
+    if (session >= knownPresent) session = present;
+    knownPresent = present;
+    render();
+  });
+
+  pastbar.querySelector('.pastbar-now')!.addEventListener('click', () => {
+    session = store.data.campaign.currentSession;
     render();
   });
 
@@ -259,7 +296,7 @@ function renderTable(store: ApiStore): void {
       .advanceSession()
       .then((s) => {
         session = s;
-        slider.value = String(s);
+        render();
       })
       .catch(oops);
   });

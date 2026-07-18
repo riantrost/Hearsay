@@ -12,6 +12,7 @@
 import type { ApiStore } from '../apiStore';
 import type { CampaignData } from '../model';
 import { MARK_MAX_CHARS } from '../model';
+import { siteMarks } from './render';
 
 export interface SurfaceContext {
   store: ApiStore;
@@ -112,8 +113,8 @@ export function renderPinSurface(host: HTMLElement, ctx: SurfaceContext): void {
   const events = data.events
     .filter((e) => e.pinId === pinId && e.session <= session)
     .sort((a, b) => a.session - b.session);
-  const eventIds = new Set(events.map((e) => e.id));
-  const marks = data.testimony.filter((t) => t.markText && eventIds.has(t.eventId) && t.session <= session);
+  // a mark rides its event's session, not its writing date (late is fine, forever)
+  const marks = siteMarks(data, pinId, session);
 
   const frag = document.createDocumentFragment();
   frag.appendChild(el('h2', undefined, pin.name));

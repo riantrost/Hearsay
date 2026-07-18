@@ -2,7 +2,7 @@
 // (the scrubber's clock). Re-renders wholesale, Fragments-style — the
 // Viewport re-applies its transform to the fresh <g class="vp"> afterwards.
 
-import type { CampaignData, Pin } from '../model';
+import type { CampaignData, Pin, Testimony } from '../model';
 
 const SVG_NS = 'http://www.w3.org/2000/svg';
 
@@ -61,6 +61,17 @@ export function pulseClass(age: number): '' | ' fresh' | ' settled' {
 }
 
 /**
+ * Marks found at a site at the viewed session. A mark rides its *event's*
+ * session stamp (docs/decisions.md, "Marks"): testimony may arrive late —
+ * late is fine, forever — but graffiti belongs to when the thing happened,
+ * so the scrubber surfaces it with its event, never with its writing date.
+ */
+export function siteMarks(data: CampaignData, pinId: string, session: number): Testimony[] {
+  const eventIds = new Set(data.events.filter((e) => e.pinId === pinId && e.session <= session).map((e) => e.id));
+  return data.testimony.filter((t) => t.markText !== undefined && eventIds.has(t.eventId));
+}
+
+/**
  * Pins with no history yet. "A site with no history has no page" holds for
  * players — but the owner who just named a place must be able to reach it
  * again to give it its first event, so to them it renders as a ghost.
@@ -97,8 +108,7 @@ export function renderMap(host: HTMLElement, data: CampaignData, view: MapView):
     const isGhost = ghostIds.has(pin.id);
     // data arrives seat-filtered from the server: any mark present is yours to see
     const events = data.events.filter((e) => e.pinId === pin.id && e.session <= view.session);
-    const eventIds = new Set(events.map((e) => e.id));
-    const marks = data.testimony.filter((t) => t.markText && eventIds.has(t.eventId) && t.session <= view.session);
+    const marks = siteMarks(data, pin.id, view.session);
 
     const pulse = isGhost ? null : pinPulse(data, pin.id, view.session);
     const pg = document.createElementNS(SVG_NS, 'g');

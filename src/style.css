@@ -16,6 +16,10 @@ body {
 }
 .map-host:active { cursor: grabbing; }
 .map-host.placing { cursor: crosshair; }
+/* viewing the past: the world reads as memory, gently faded */
+.map-host.past svg image {
+  filter: sepia(0.3) brightness(0.94) saturate(0.85);
+}
 
 svg.map { width: 100%; height: 100%; display: block; }
 
@@ -434,6 +438,38 @@ svg.map { width: 100%; height: 100%; display: block; }
 }
 .placebar-cancel:hover { border-color: #b8552f; color: #dfe9f0; }
 
+/* viewing the past: signposted, with the way back one tap away */
+.pastbar {
+  position: absolute;
+  top: 16px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 5;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  background: rgba(244, 237, 226, 0.95);
+  color: #5a4632;
+  padding: 8px 14px;
+  border-radius: 4px;
+  font-style: italic;
+  font-size: 14px;
+  box-shadow: 0 3px 12px rgba(10, 16, 22, 0.4);
+}
+.pastbar-now {
+  font-family: inherit;
+  font-style: normal;
+  font-variant: small-caps;
+  letter-spacing: 1px;
+  font-size: 12px;
+  background: #b8552f;
+  color: #f4ede2;
+  border: none;
+  padding: 3px 12px;
+  cursor: pointer;
+}
+.pastbar-now:hover { background: #9a4526; }
+
 /* scrubber */
 .scrubber {
   position: absolute;
@@ -454,6 +490,7 @@ svg.map { width: 100%; height: 100%; display: block; }
   white-space: nowrap;
 }
 .scrubber input { flex: 1; accent-color: #b8552f; }
+.scrubber.past .scrubber-label { color: #e0a184; font-style: italic; }
 .scrubber .advance {
   font-family: inherit;
   font-variant: small-caps;
