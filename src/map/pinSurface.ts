@@ -118,6 +118,19 @@ export function renderPinSurface(host: HTMLElement, ctx: SurfaceContext): void {
   const frag = document.createDocumentFragment();
   frag.appendChild(el('h2', undefined, pin.name));
 
+  // the site's lineage in one line: how long this place has been accumulating
+  if (events.length > 0) {
+    const first = events[0].session;
+    const last = events[events.length - 1].session;
+    frag.appendChild(
+      el(
+        'p',
+        'site-line',
+        events.length === 1 ? `one event · session ${first}` : `${events.length} events · sessions ${first}–${last}`,
+      ),
+    );
+  }
+
   if (events.length === 0 && isOwner) {
     frag.appendChild(el('p', 'ghost-hint', 'no history here yet — the first event makes this place real to the table'));
   }
@@ -128,8 +141,19 @@ export function renderPinSurface(host: HTMLElement, ctx: SurfaceContext): void {
   }
 
   for (const event of events) {
-    const sec = el('section', 'event');
-    sec.appendChild(el('h3', undefined, `Session ${event.session}`));
+    // the event still unfolding at the table's present reads warm; jacks in
+    // the header mirror the map's grammar — solid voices in, hollow waiting
+    const fresh = event.session === data.campaign.currentSession && session === data.campaign.currentSession;
+    const sec = el('section', 'event' + (fresh ? ' fresh' : ''));
+    const head = el('h3', undefined, `Session ${event.session}`);
+    if (fresh) head.appendChild(el('span', 'now-tag', 'now'));
+    const jacks = el('span', 'slot-jacks');
+    for (const memberId of event.participantIds) {
+      const told = data.testimony.some((t) => t.eventId === event.id && t.memberId === memberId);
+      jacks.appendChild(el('i', 'jack' + (told ? ' told' : '')));
+    }
+    head.appendChild(jacks);
+    sec.appendChild(head);
     sec.appendChild(el('p', 'event-canon', event.canonLine));
 
     for (const memberId of event.participantIds) {

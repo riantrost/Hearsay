@@ -23,6 +23,44 @@ export function visiblePins(data: CampaignData, session: number): Pin[] {
 }
 
 /**
+ * A site's heartbeat at the viewed session: how recently something happened
+ * here, and whose voices are still missing from it. This is what makes a pin
+ * read as alive at a glance — recency and open testimony slots derive from
+ * the session stamps, no schema of their own (V1 requirement 1). Computed
+ * against the *viewed* session, so scrubbing back replays the illumination:
+ * the map as of session 2 glows where session 2 was happening.
+ */
+export interface PinPulse {
+  /** Session of the site's latest event at the viewed session. */
+  latestSession: number;
+  /** Sessions since something happened here: 0 = happening now. */
+  age: number;
+  /** Testimony slots on the latest session's events (seat-filtered: a withheld entry reads as open). */
+  filled: number;
+  total: number;
+}
+
+export function pinPulse(data: CampaignData, pinId: string, session: number): PinPulse | null {
+  const events = data.events.filter((e) => e.pinId === pinId && e.session <= session);
+  if (events.length === 0) return null;
+  const latestSession = Math.max(...events.map((e) => e.session));
+  let filled = 0;
+  let total = 0;
+  for (const e of events) {
+    if (e.session !== latestSession) continue;
+    total += e.participantIds.length;
+    filled += e.participantIds.filter((id) => data.testimony.some((t) => t.eventId === e.id && t.memberId === id)).length;
+  }
+  return { latestSession, age: session - latestSession, filled, total };
+}
+
+/** Illumination bucket: fresh glows, warm reads normal, settled cools toward ink. */
+export function pulseClass(age: number): '' | ' fresh' | ' settled' {
+  if (age === 0) return ' fresh';
+  return age >= 3 ? ' settled' : '';
+}
+
+/**
  * Pins with no history yet. "A site with no history has no page" holds for
  * players — but the owner who just named a place must be able to reach it
  * again to give it its first event, so to them it renders as a ghost.
@@ -62,8 +100,14 @@ export function renderMap(host: HTMLElement, data: CampaignData, view: MapView):
     const eventIds = new Set(events.map((e) => e.id));
     const marks = data.testimony.filter((t) => t.markText && eventIds.has(t.eventId) && t.session <= view.session);
 
+    const pulse = isGhost ? null : pinPulse(data, pin.id, view.session);
     const pg = document.createElementNS(SVG_NS, 'g');
-    pg.setAttribute('class', 'pin' + (isGhost ? ' ghost' : '') + (pin.id === view.selectedPinId ? ' selected' : ''));
+    pg.setAttribute(
+      'class',
+      'pin' +
+        (isGhost ? ' ghost' : pulseClass(pulse!.age)) +
+        (pin.id === view.selectedPinId ? ' selected' : ''),
+    );
     pg.setAttribute('data-pin-id', pin.id);
     // pin geometry is authored at a 1600px reference map; scale with the image
     const u = Math.max(mapW, mapH) / 1600;
@@ -79,12 +123,31 @@ export function renderMap(host: HTMLElement, data: CampaignData, view: MapView):
       `translate(${pin.x * mapW}px, ${pin.y * mapH}px) scale(calc(${u} * var(--pin-k, 1)))`,
     );
 
+    const haloR = 14 + (events.length - 1) * 6;
     if (!isGhost) {
       const halo = document.createElementNS(SVG_NS, 'circle');
       halo.setAttribute('class', 'pin-halo');
       // a site deepens as events accumulate: the halo grows with lineage
-      halo.setAttribute('r', String(14 + (events.length - 1) * 6));
+      halo.setAttribute('r', String(haloR));
       pg.appendChild(halo);
+    }
+
+    // open-slot jacks: one hollow pip per voice still missing from the latest
+    // session's events — filled slots draw nothing, so a fully-told site sits
+    // quiet and an untold one visibly waits. Arced above the dot, riding just
+    // outside the halo so lineage growth pushes them outward with it.
+    if (pulse) {
+      const open = pulse.total - pulse.filled;
+      const jackR = haloR + 5;
+      for (let i = 0; i < open; i++) {
+        const jack = document.createElementNS(SVG_NS, 'circle');
+        jack.setAttribute('class', 'pin-jack');
+        const a = ((-90 + (i - (open - 1) / 2) * 26) * Math.PI) / 180;
+        jack.setAttribute('cx', (jackR * Math.cos(a)).toFixed(1));
+        jack.setAttribute('cy', (jackR * Math.sin(a)).toFixed(1));
+        jack.setAttribute('r', '3.2');
+        pg.appendChild(jack);
+      }
     }
 
     const dot = document.createElementNS(SVG_NS, 'circle');

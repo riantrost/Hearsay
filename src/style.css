@@ -32,6 +32,25 @@ svg.map { width: 100%; height: 100%; display: block; }
 }
 .pin.selected .pin-dot { fill: #7a2f14; }
 .pin.selected .pin-halo { opacity: 0.3; }
+/* recency illumination: what happened this session breathes; old sites cool toward ink */
+.pin.fresh .pin-halo {
+  opacity: 0.34;
+  animation: pin-breathe 2.8s ease-in-out infinite;
+}
+@keyframes pin-breathe {
+  0%, 100% { opacity: 0.34; }
+  50% { opacity: 0.12; }
+}
+.pin.settled .pin-dot { fill: #7d6f60; }
+.pin.settled .pin-halo { fill: #7d6f60; opacity: 0.1; }
+.pin.settled.selected .pin-dot { fill: #574c40; }
+/* open-slot jacks: hollow pips for the voices still missing at the latest event */
+.pin-jack {
+  fill: rgba(244, 237, 226, 0.85);
+  stroke: #b8552f;
+  stroke-width: 1.8;
+}
+.pin.settled .pin-jack { stroke: #7d6f60; }
 /* ghost: a named place with no history yet — owner-only scaffolding */
 .pin.ghost .pin-dot {
   fill: rgba(184, 85, 47, 0.12);
@@ -79,6 +98,13 @@ svg.map { width: 100%; height: 100%; display: block; }
 .pin-surface h2 {
   font-size: 22px;
   letter-spacing: 1px;
+  margin-bottom: 2px;
+}
+.site-line {
+  font-variant: small-caps;
+  letter-spacing: 1.5px;
+  font-size: 12px;
+  color: #a39680;
   margin-bottom: 12px;
 }
 .mark {
@@ -102,7 +128,35 @@ svg.map { width: 100%; height: 100%; display: block; }
   text-transform: uppercase;
   letter-spacing: 2px;
   color: #8a7a5f;
+  display: flex;
+  align-items: center;
+  gap: 8px;
 }
+/* the event still unfolding at the table's present */
+.event.fresh { border-top: 2px solid #b8552f; }
+.event.fresh h3 { color: #b8552f; }
+.now-tag {
+  font-size: 10px;
+  letter-spacing: 1.5px;
+  background: #b8552f;
+  color: #f4ede2;
+  padding: 1px 7px;
+  border-radius: 8px;
+}
+/* slot jacks: the map's grammar carried inside — solid voices in, hollow waiting */
+.slot-jacks {
+  display: inline-flex;
+  gap: 4px;
+  margin-left: auto;
+}
+.slot-jacks .jack {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  border: 1.5px solid #b8552f;
+  background: transparent;
+}
+.slot-jacks .jack.told { background: #b8552f; }
 .event-canon { margin: 6px 0 10px; font-weight: bold; }
 .testimony { margin: 10px 0; }
 .testimony-author {
@@ -114,6 +168,17 @@ svg.map { width: 100%; height: 100%; display: block; }
   margin-bottom: 2px;
 }
 .testimony.empty p { font-style: italic; color: #a39680; }
+.testimony.empty p::before {
+  content: '';
+  display: inline-block;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  border: 1.5px solid #c9bda4;
+  margin-right: 7px;
+  vertical-align: baseline;
+}
+.testimony.empty .testimony-author { color: #a39680; }
 
 /* identity */
 .identity {
