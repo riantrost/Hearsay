@@ -9,7 +9,8 @@
     "test:watch": "vitest",
     "build": "vitest run && tsc --noEmit && tsc -p functions --noEmit && vite build && node scripts/verify-build.mjs",
     "preview": "vite preview",
-    "api": "wrangler pages dev dist --port 8788"
+    "api": "wrangler pages dev dist --port 8788",
+    "deploy": "npm run build && wrangler pages deploy && node scripts/verify-deploy.mjs https://hearsay-preview.pages.dev"
   },
   "devDependencies": {
     "@cloudflare/workers-types": "^5.20260708.1",

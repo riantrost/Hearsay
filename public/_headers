@@ -1,0 +1,5 @@
+# Pages header rules. Table-private by principle: nothing here is for
+# crawlers — the meta tag covers the HTML, this covers every response
+# (assets, API, maps).
+/*
+  X-Robots-Tag: noindex
