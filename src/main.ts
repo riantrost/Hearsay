@@ -51,6 +51,12 @@ function renderTable(store: ApiStore): void {
     <div class="map-host"></div>
     <aside class="pin-surface" hidden></aside>
     <header class="identity"></header>
+    <div class="placebar" hidden>
+      <span class="placebar-dot"></span>
+      <span>Tap the map where it happened</span>
+      <button class="placebar-cancel">cancel</button>
+    </div>
+    <button class="place-btn" hidden>＋ Pin</button>
     <footer class="scrubber">
       <span class="scrubber-label"></span>
       <input type="range" min="1" step="1" />
@@ -61,46 +67,66 @@ function renderTable(store: ApiStore): void {
   const mapHost = app.querySelector<HTMLDivElement>('.map-host')!;
   const surface = app.querySelector<HTMLElement>('.pin-surface')!;
   const identity = app.querySelector<HTMLElement>('.identity')!;
+  const placebar = app.querySelector<HTMLElement>('.placebar')!;
+  const placeBtn = app.querySelector<HTMLButtonElement>('.place-btn')!;
   const slider = app.querySelector<HTMLInputElement>('.scrubber input')!;
   const sliderLabel = app.querySelector<HTMLElement>('.scrubber-label')!;
   const advanceBtn = app.querySelector<HTMLButtonElement>('.advance')!;
 
   let session = store.data.campaign.currentSession;
   let selectedPinId: string | null = null;
+  // dropping a pin is a deliberate act, never a byproduct of touching the map:
+  // the owner arms placement, and the *next* map tap places, then disarms
+  let placing = false;
   const viewerId = store.seat.memberId;
   const isOwner = () => store.me?.role === 'owner';
+  const canPlace = () => isOwner() && session === store.data.campaign.currentSession;
   const oops = (e: unknown) => alert(e instanceof Error ? e.message : String(e));
+
+  function setPlacing(on: boolean): void {
+    placing = on && canPlace();
+    render();
+  }
 
   const viewport = new Viewport(mapHost, {
     onTap(target, cx, cy) {
-      const pinEl = target.closest<SVGGElement>('.pin');
-      if (pinEl) {
-        selectedPinId = pinEl.dataset.pinId ?? null;
+      // armed: this tap places a single pin at open ground, then disarms
+      if (placing) {
+        placing = false;
         render();
-        return;
-      }
-      // owner taps open ground at the current session: a place gets a name
-      const { mapW, mapH, currentSession } = store.data.campaign;
-      if (isOwner() && session === currentSession && cx >= 0 && cy >= 0 && cx <= mapW && cy <= mapH) {
-        const name = window.prompt('Name this place');
-        if (name?.trim()) {
-          store
-            .addPin(cx / mapW, cy / mapH, name)
-            .then((pin) => {
-              // addPin's notify re-renders with the old selection; select the
-              // new pin and render again so the surface opens on the right place
-              selectedPinId = pin.id;
-              render();
-            })
-            .catch(oops);
+        const { mapW, mapH } = store.data.campaign;
+        if (canPlace() && cx >= 0 && cy >= 0 && cx <= mapW && cy <= mapH) {
+          const name = window.prompt('Name this place');
+          if (name?.trim()) {
+            store
+              .addPin(cx / mapW, cy / mapH, name)
+              .then((pin) => {
+                // addPin's notify re-renders with the old selection; select the
+                // new pin and render again so the surface opens on the right place
+                selectedPinId = pin.id;
+                render();
+              })
+              .catch(oops);
+          }
         }
         return;
       }
-      selectedPinId = null;
+      // otherwise the map only browses: a tap selects a pin or clears selection
+      const pinEl = target.closest<SVGGElement>('.pin');
+      selectedPinId = pinEl?.dataset.pinId ?? null;
       render();
+    },
+    onTransform(scale) {
+      // pins counter-scale against the world transform so they stay legible at
+      // any zoom (clamped, so they neither balloon nor vanish at the extremes)
+      const k = Math.max(0.5, Math.min(2.4, 1 / scale));
+      mapHost.style.setProperty('--pin-k', k.toFixed(3));
     },
   });
   viewport.setContentSize(store.data.campaign.mapW, store.data.campaign.mapH);
+
+  placeBtn.addEventListener('click', () => setPlacing(!placing));
+  placebar.querySelector('.placebar-cancel')!.addEventListener('click', () => setPlacing(false));
 
   function renderIdentity(): void {
     const me = store.me;
@@ -172,6 +198,13 @@ function renderTable(store: ApiStore): void {
     });
     viewport.apply();
     renderIdentity();
+    // leaving the present (scrubbing back) or a non-owner seat disarms placement
+    if (placing && !canPlace()) placing = false;
+    placeBtn.hidden = !canPlace();
+    placeBtn.classList.toggle('active', placing);
+    placeBtn.textContent = placing ? '✕ cancel' : '＋ Pin';
+    placebar.hidden = !placing;
+    mapHost.classList.toggle('placing', placing);
     slider.max = String(store.data.campaign.currentSession);
     sliderLabel.textContent = `Session ${session}`;
     advanceBtn.hidden = !isOwner();

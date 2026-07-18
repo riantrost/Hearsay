@@ -67,7 +67,17 @@ export function renderMap(host: HTMLElement, data: CampaignData, view: MapView):
     pg.setAttribute('data-pin-id', pin.id);
     // pin geometry is authored at a 1600px reference map; scale with the image
     const u = Math.max(mapW, mapH) / 1600;
-    pg.setAttribute('transform', `translate(${pin.x * mapW}, ${pin.y * mapH}) scale(${u})`);
+    // ...then counter-scale by --pin-k (viewport-driven, ~1/zoom) so pins hold a
+    // legible screen size at any zoom instead of shrinking to specks / ballooning.
+    // A CSS transform (not the attribute) lets the var re-apply on zoom without
+    // a re-render; transform-box/origin give it the attribute's clean pivot at
+    // the pin's own point.
+    pg.style.setProperty('transform-box', 'view-box');
+    pg.style.setProperty('transform-origin', '0 0');
+    pg.style.setProperty(
+      'transform',
+      `translate(${pin.x * mapW}px, ${pin.y * mapH}px) scale(calc(${u} * var(--pin-k, 1)))`,
+    );
 
     if (!isGhost) {
       const halo = document.createElementNS(SVG_NS, 'circle');

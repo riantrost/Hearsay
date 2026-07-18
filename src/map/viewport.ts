@@ -11,6 +11,12 @@ export interface ViewportOptions {
    * placement needs.
    */
   onTap: (target: Element, cx: number, cy: number) => void;
+  /**
+   * Fires whenever the view transform changes, with the current scale.
+   * Pins live inside the scaled world, so consumers counter-scale them
+   * (a `--pin-k` var) to hold a legible screen size at any zoom.
+   */
+  onTransform?: (scale: number) => void;
 }
 
 const MIN_SCALE = 0.15;
@@ -29,6 +35,7 @@ export class Viewport {
 
   private el: HTMLElement;
   private onTap: (target: Element, cx: number, cy: number) => void;
+  private onTransform?: (scale: number) => void;
   private pointers = new Map<number, PointerInfo>();
   private tapCandidate: { target: Element; x: number; y: number } | null = null;
   private contentW = 0;
@@ -37,6 +44,7 @@ export class Viewport {
   constructor(el: HTMLElement, opts: ViewportOptions) {
     this.el = el;
     this.onTap = opts.onTap;
+    this.onTransform = opts.onTransform;
 
     el.addEventListener('pointerdown', this.onPointerDown);
     el.addEventListener('pointermove', this.onPointerMove);
@@ -64,6 +72,9 @@ export class Viewport {
 
   /** Re-apply the current transform to the (possibly re-created) inner group. */
   apply(smooth = false): void {
+    // announce scale first: pin counter-scale must update even on the frames
+    // where the group isn't in the DOM yet (a re-render is about to land it)
+    this.onTransform?.(this.scale);
     const g = this.el.querySelector<SVGGElement>('g.vp');
     if (!g) return;
     g.style.transformOrigin = '0 0';
