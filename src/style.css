@@ -55,6 +55,25 @@ svg.map { width: 100%; height: 100%; display: block; }
   stroke-width: 1.8;
 }
 .pin.settled .pin-jack { stroke: #7d6f60; }
+/* staged: the owner's secret layer — veiled, not yet part of the world */
+.pin.staged .pin-dot {
+  fill: #3d5266;
+  stroke: #9fb4c4;
+  stroke-dasharray: 2 2;
+}
+.pin.staged.selected .pin-dot { fill: #22303c; }
+.pin.staged .pin-label { opacity: 0.75; }
+.pin-staged-tag {
+  fill: #5a7186;
+  font-size: 10px;
+  font-variant: small-caps;
+  letter-spacing: 1.5px;
+  text-anchor: middle;
+  paint-order: stroke;
+  stroke: #e8f0f6;
+  stroke-width: 2.5px;
+  pointer-events: none;
+}
 /* ghost: a named place with no history yet — owner-only scaffolding */
 .pin.ghost .pin-dot {
   fill: rgba(184, 85, 47, 0.12);
@@ -369,6 +388,28 @@ svg.map { width: 100%; height: 100%; display: block; }
   color: #a39680;
   margin: 8px 0;
 }
+.staged-hint {
+  font-variant: small-caps;
+  letter-spacing: 1.5px;
+  font-size: 13px;
+  color: #3d5266;
+  background: #dfe7ee;
+  border-left: 3px solid #3d5266;
+  padding: 8px 12px;
+  margin: 8px 0;
+}
+.pin-surface button.stage-toggle {
+  background: transparent;
+  border: 1px solid #c9bda4;
+  color: #8a7a5f;
+  margin-top: 6px;
+}
+.pin-surface button.stage-toggle:hover {
+  border-color: #3d5266;
+  color: #3d5266;
+  background: transparent;
+}
+.reveal-form input { border-color: #3d5266; }
 .add-event {
   margin-top: 24px;
   border-top: 2px solid #c9bda4;

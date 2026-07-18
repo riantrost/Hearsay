@@ -65,6 +65,29 @@ export class ApiStore {
     return pin;
   }
 
+  private replacePin(pin: Pin): void {
+    const i = this.data.pins.findIndex((p) => p.id === pin.id);
+    if (i >= 0) this.data.pins[i] = pin;
+    else this.data.pins.push(pin);
+  }
+
+  /** Stage or unstage an event-less pin (owner) — the secret layer's toggle. */
+  async setPinHidden(pinId: string, hidden: boolean): Promise<Pin> {
+    const pin = await api.postPinHidden(this.seat, pinId, hidden);
+    this.replacePin(pin);
+    this.notify();
+    return pin;
+  }
+
+  /** Reveal a staged pin to the table — the reveal is itself a timeline event. */
+  async revealPin(pinId: string, canonLine: string): Promise<Pin> {
+    const { pin, event } = await api.postPinReveal(this.seat, pinId, canonLine);
+    this.replacePin(pin);
+    this.data.events.push(event);
+    this.notify();
+    return pin;
+  }
+
   async addEvent(pinId: string, canonLine: string): Promise<SiteEvent> {
     const event = await api.postEvent(this.seat, pinId, canonLine);
     this.data.events.push(event);

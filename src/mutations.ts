@@ -37,10 +37,24 @@ export function testimonyVisibleTo(data: CampaignData, t: Testimony, viewerId: s
 /**
  * The campaign as one viewer is allowed to see it — invisible testimony is
  * absent, not redacted, and because a mark lives on its testimony (markText),
- * stripping the entry withholds the mark too. This is what the API returns.
+ * stripping the entry withholds the mark too. Staged pins go further: for
+ * anyone but the owner, the pin, its prepped events, and any testimony on
+ * them simply don't exist — not even in the payload (fog is narrative
+ * disclosure; a secret that ships in JSON isn't one). This is what the API
+ * returns.
  */
 export function visibleData(data: CampaignData, viewerId: string): CampaignData {
-  return { ...data, testimony: data.testimony.filter((t) => testimonyVisibleTo(data, t, viewerId)) };
+  const viewer = data.members.find((m) => m.id === viewerId);
+  let { pins, events } = data;
+  let testimony = data.testimony.filter((t) => testimonyVisibleTo(data, t, viewerId));
+  if (viewer?.role !== 'owner') {
+    const staged = new Set(pins.filter((p) => p.hidden).map((p) => p.id));
+    const stagedEvents = new Set(events.filter((e) => staged.has(e.pinId)).map((e) => e.id));
+    pins = pins.filter((p) => !staged.has(p.id));
+    events = events.filter((e) => !stagedEvents.has(e.id));
+    testimony = testimony.filter((t) => !stagedEvents.has(t.eventId));
+  }
+  return { ...data, pins, events, testimony };
 }
 
 /**
@@ -110,6 +124,39 @@ export function addEvent(data: CampaignData, pinId: string, canonLine: string, p
   };
   data.events.push(event);
   return event;
+}
+
+/**
+ * Stage or unstage a pin. Toggling is free only while the place has no
+ * events: once history exists, the table (or the owner's prep) has memory
+ * here, and the only door out of staging is a reveal — which leaves a
+ * timeline record instead of quietly rewriting who could see what when.
+ */
+export function setPinHidden(data: CampaignData, pinId: string, hidden: boolean): Pin {
+  const pin = data.pins.find((p) => p.id === pinId);
+  if (!pin) throw new Error('no such pin');
+  if (data.events.some((e) => e.pinId === pinId)) {
+    throw new Error(hidden ? 'this place already has history — the table remembers it' : 'a staged place with history returns only by reveal');
+  }
+  if (hidden) pin.hidden = true;
+  else delete pin.hidden;
+  return pin;
+}
+
+/**
+ * Reveal a staged pin: the reveal is itself a timeline event
+ * (docs/decisions.md, fog) — the pin joins the table's map at the current
+ * session, stamped so the scrubber replays its arrival, and the canon line
+ * says what the table now knows.
+ */
+export function revealPin(data: CampaignData, pinId: string, canonLine: string): { pin: Pin; event: SiteEvent } {
+  const pin = data.pins.find((p) => p.id === pinId);
+  if (!pin) throw new Error('no such pin');
+  if (!pin.hidden) throw new Error('this place is not staged');
+  const event = addEvent(data, pinId, canonLine);
+  delete pin.hidden;
+  pin.hiddenUntilSession = data.campaign.currentSession;
+  return { pin, event };
 }
 
 export function advanceSession(data: CampaignData): number {

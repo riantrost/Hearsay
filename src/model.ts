@@ -36,7 +36,13 @@ export interface Pin {
   x: number;
   y: number;
   name: string;
-  /** Session the pin was revealed; undefined = visible from the start. */
+  /**
+   * Staged: the pin (and any events prepped on it) exists only for the owner
+   * — it doesn't exist on players' maps, nor in their payloads. The way out
+   * is a reveal, which is itself a timeline event (docs/decisions.md, fog).
+   */
+  hidden?: boolean;
+  /** Session the pin was revealed — the scrubber's record; undefined = visible from the start. */
   hiddenUntilSession?: number;
 }
 

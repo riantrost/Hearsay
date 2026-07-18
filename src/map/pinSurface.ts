@@ -132,8 +132,30 @@ export function renderPinSurface(host: HTMLElement, ctx: SurfaceContext): void {
     );
   }
 
-  if (events.length === 0 && isOwner) {
+  if (pin.hidden && isOwner) {
+    // the staging layer: this place doesn't exist for the table — not on
+    // their maps, not in their payloads. The way out is a reveal, which
+    // lands as a timeline event.
+    frag.appendChild(el('p', 'staged-hint', 'staged — the table cannot see this place'));
+    if (writable) {
+      const revealForm = lineForm('what the table now learns', 'reveal', (v) => store.revealPin(pinId, v));
+      revealForm.classList.add('reveal-form');
+      applyDraft(revealForm.querySelector('input')!, `reveal:${pinId}`);
+      frag.appendChild(revealForm);
+      if (events.length === 0 && data.events.every((e) => e.pinId !== pinId)) {
+        const unstage = el('button', 'stage-toggle', 'unstage');
+        unstage.addEventListener('click', () => store.setPinHidden(pinId, false).catch(oops));
+        frag.appendChild(unstage);
+      }
+    }
+  } else if (events.length === 0 && isOwner) {
     frag.appendChild(el('p', 'ghost-hint', 'no history here yet — the first event makes this place real to the table'));
+    if (writable && data.events.every((e) => e.pinId !== pinId)) {
+      const stage = el('button', 'stage-toggle', 'stage in secret');
+      stage.title = 'the table will not see this place until you reveal it';
+      stage.addEventListener('click', () => store.setPinHidden(pinId, true).catch(oops));
+      frag.appendChild(stage);
+    }
   }
 
   // marks first: what you find scrawled at the site before you know its story

@@ -16,10 +16,19 @@ export interface MapView {
 
 export function visiblePins(data: CampaignData, session: number): Pin[] {
   return data.pins.filter((p) => {
-    const revealed = p.hiddenUntilSession === undefined || p.hiddenUntilSession <= session;
+    const revealed = !p.hidden && (p.hiddenUntilSession === undefined || p.hiddenUntilSession <= session);
     const hasEvents = data.events.some((e) => e.pinId === p.id && e.session <= session);
     return revealed && hasEvents;
   });
+}
+
+/**
+ * Staged pins — the owner's secret layer. Players never receive them (the
+ * server strips them from the payload); for the owner they render veiled,
+ * at the present only, alongside the ghosts.
+ */
+export function stagedPins(data: CampaignData): Pin[] {
+  return data.pins.filter((p) => p.hidden === true);
 }
 
 /**
@@ -80,7 +89,7 @@ export function siteMarks(data: CampaignData, pinId: string, session: number): T
  */
 export function ghostPins(data: CampaignData, session: number): Pin[] {
   return data.pins.filter((p) => {
-    const revealed = p.hiddenUntilSession === undefined || p.hiddenUntilSession <= session;
+    const revealed = !p.hidden && (p.hiddenUntilSession === undefined || p.hiddenUntilSession <= session);
     const hasEvents = data.events.some((e) => e.pinId === p.id && e.session <= session);
     return revealed && !hasEvents;
   });
@@ -103,19 +112,23 @@ export function renderMap(host: HTMLElement, data: CampaignData, view: MapView):
 
   const ghosts = view.withGhosts ? ghostPins(data, view.session) : [];
   const ghostIds = new Set(ghosts.map((p) => p.id));
+  const staged = view.withGhosts ? stagedPins(data) : [];
+  const stagedIds = new Set(staged.map((p) => p.id));
 
-  for (const pin of [...visiblePins(data, view.session), ...ghosts]) {
+  for (const pin of [...visiblePins(data, view.session), ...ghosts, ...staged]) {
     const isGhost = ghostIds.has(pin.id);
+    const isStaged = stagedIds.has(pin.id);
     // data arrives seat-filtered from the server: any mark present is yours to see
     const events = data.events.filter((e) => e.pinId === pin.id && e.session <= view.session);
     const marks = siteMarks(data, pin.id, view.session);
 
-    const pulse = isGhost ? null : pinPulse(data, pin.id, view.session);
+    // staged pins have no pulse: they aren't alive to the table yet
+    const pulse = isGhost || isStaged ? null : pinPulse(data, pin.id, view.session);
     const pg = document.createElementNS(SVG_NS, 'g');
     pg.setAttribute(
       'class',
       'pin' +
-        (isGhost ? ' ghost' : pulseClass(pulse!.age)) +
+        (isStaged ? ' staged' : isGhost ? ' ghost' : pulseClass(pulse!.age)) +
         (pin.id === view.selectedPinId ? ' selected' : ''),
     );
     pg.setAttribute('data-pin-id', pin.id);
@@ -134,7 +147,7 @@ export function renderMap(host: HTMLElement, data: CampaignData, view: MapView):
     );
 
     const haloR = 14 + (events.length - 1) * 6;
-    if (!isGhost) {
+    if (!isGhost && !isStaged) {
       const halo = document.createElementNS(SVG_NS, 'circle');
       halo.setAttribute('class', 'pin-halo');
       // a site deepens as events accumulate: the halo grows with lineage
@@ -187,6 +200,14 @@ export function renderMap(host: HTMLElement, data: CampaignData, view: MapView):
     label.setAttribute('y', '32');
     label.textContent = pin.name;
     pg.appendChild(label);
+
+    if (isStaged) {
+      const tag = document.createElementNS(SVG_NS, 'text');
+      tag.setAttribute('class', 'pin-staged-tag');
+      tag.setAttribute('y', '46');
+      tag.textContent = 'staged';
+      pg.appendChild(tag);
+    }
 
     g.appendChild(pg);
   }
