@@ -7,7 +7,7 @@
     "dev": "vite",
     "test": "vitest run",
     "test:watch": "vitest",
-    "build": "vitest run && tsc --noEmit && tsc -p functions --noEmit && vite build",
+    "build": "vitest run && tsc --noEmit && tsc -p functions --noEmit && vite build && node scripts/verify-build.mjs",
     "preview": "vite preview",
     "api": "wrangler pages dev dist --port 8788"
   },

@@ -13,7 +13,15 @@ import { clearSeat, loadSeat, saveSeat, type Seat } from './seat';
 
 const app = document.querySelector<HTMLDivElement>('#app')!;
 
+/** How often an open pin surface asks the server what it missed. */
+const PIN_POLL_MS = 5000;
+
+/** Undoes the previous table's listeners/timers when the app re-boots. */
+let teardown: (() => void) | undefined;
+
 async function boot(): Promise<void> {
+  teardown?.();
+  teardown = undefined;
   const seat = loadSeat();
   if (!seat) {
     renderLanding(app, onSeated);
@@ -37,6 +45,8 @@ function onSeated(seat: Seat): void {
 }
 
 function renderTable(store: ApiStore): void {
+  const ac = new AbortController();
+  const signal = ac.signal;
   app.innerHTML = `
     <div class="map-host"></div>
     <aside class="pin-surface" hidden></aside>
@@ -168,6 +178,7 @@ function renderTable(store: ApiStore): void {
     advanceBtn.textContent = `begin session ${store.data.campaign.currentSession + 1}`;
     if (selectedPinId) renderPinSurface(surface, { store, pinId: selectedPinId, session, viewerId });
     else surface.hidden = true;
+    syncPoll();
   }
 
   store.subscribe(() => {
@@ -176,6 +187,34 @@ function renderTable(store: ApiStore): void {
     slider.value = String(session);
     render();
   });
+
+  // --- freshness discipline: the app can never pin itself stale ---
+  // refresh is quiet when nothing changed, so refetching is always safe
+  const refetch = () => {
+    // a flaky connection keeps showing what we have; the next signal retries
+    store.refresh().catch(() => {});
+  };
+  window.addEventListener('focus', refetch, { signal });
+  document.addEventListener('visibilitychange', () => {
+    if (!document.hidden) refetch();
+    syncPoll();
+  }, { signal });
+
+  // short poll while a pin surface is open — that's where the table reads
+  // each other, and where staleness would show
+  let poll: number | undefined;
+  function syncPoll(): void {
+    const want = selectedPinId !== null && !document.hidden;
+    if (want && poll === undefined) poll = window.setInterval(refetch, PIN_POLL_MS);
+    if (!want && poll !== undefined) {
+      clearInterval(poll);
+      poll = undefined;
+    }
+  }
+  teardown = () => {
+    ac.abort();
+    if (poll !== undefined) clearInterval(poll);
+  };
 
   slider.addEventListener('input', () => {
     session = Number(slider.value);
@@ -206,7 +245,7 @@ function renderTable(store: ApiStore): void {
   tryFit();
   window.addEventListener('resize', () => {
     if (!userMoved) viewport.fit();
-  });
+  }, { signal });
 }
 
 void boot();

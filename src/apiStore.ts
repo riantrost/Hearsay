@@ -13,6 +13,8 @@ export class ApiStore {
   data: CampaignData;
   readonly seat: Seat;
   private listeners = new Set<() => void>();
+  /** Bumped when a mutation's response applies — stale refreshes check it. */
+  private writeStamp = 0;
 
   private constructor(seat: Seat, data: CampaignData) {
     this.seat = seat;
@@ -28,6 +30,7 @@ export class ApiStore {
   }
 
   private notify(): void {
+    this.writeStamp++;
     for (const fn of this.listeners) fn();
   }
 
@@ -36,8 +39,18 @@ export class ApiStore {
     return this.data.members.find((m) => m.id === this.seat.memberId);
   }
 
+  /**
+   * Refetch from the server (freshness discipline, roadmap step 4). Quiet
+   * when nothing changed — no notify, no re-render, no disturbing whatever
+   * the player is typing. A refresh that raced a local write is discarded:
+   * the fetched snapshot predates the write, and the next poll catches up.
+   */
   async refresh(): Promise<void> {
-    this.data = await api.fetchCampaign(this.seat);
+    const stamp = this.writeStamp;
+    const fresh = await api.fetchCampaign(this.seat);
+    if (this.writeStamp !== stamp) return;
+    if (JSON.stringify(fresh) === JSON.stringify(this.data)) return;
+    this.data = fresh;
     this.notify();
   }
 

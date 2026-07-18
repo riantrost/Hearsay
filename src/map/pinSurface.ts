@@ -4,6 +4,10 @@
 // slots take words, your fresh entries stay editable until the table's clock
 // closes them. Visibility is the server's job: data arrives already shaped
 // to the viewer's seat, so a withheld entry simply reads as an open slot.
+//
+// Re-renders are wholesale, and the freshness poll re-renders while people
+// type — so every writable field carries a draft key, and unsent words
+// (plus focus and caret) survive the rebuild.
 
 import type { ApiStore } from '../apiStore';
 import type { CampaignData } from '../model';
@@ -24,7 +28,7 @@ function el<K extends keyof HTMLElementTagNameMap>(tag: K, className?: string, t
 }
 
 /** A one-line input with a button; onSubmit gets the trimmed value. */
-function lineForm(placeholder: string, button: string, onSubmit: (value: string) => void, maxLength?: number): HTMLFormElement {
+function lineForm(placeholder: string, button: string, onSubmit: (value: string) => Promise<unknown>, maxLength?: number): HTMLFormElement {
   const form = el('form', 'line-form');
   const input = el('input');
   input.placeholder = placeholder;
@@ -34,12 +38,55 @@ function lineForm(placeholder: string, button: string, onSubmit: (value: string)
   form.addEventListener('submit', (ev) => {
     ev.preventDefault();
     const v = input.value.trim();
-    if (v) onSubmit(v);
+    if (!v) return;
+    // optimistic clear: the re-render's draft harvest must not resurrect a
+    // submitted line — and a refused submit puts the words back
+    input.value = '';
+    onSubmit(v).catch((e: unknown) => {
+      input.value = v;
+      oops(e);
+    });
   });
   return form;
 }
 
 const oops = (e: unknown) => alert(e instanceof Error ? e.message : String(e));
+
+interface Draft {
+  value: string;
+  focused: boolean;
+  start: number | null;
+  end: number | null;
+}
+
+type Field = HTMLInputElement | HTMLTextAreaElement;
+
+/** Unsent words in the old DOM, keyed by data-draft-key. */
+function harvestDrafts(host: HTMLElement): Map<string, Draft> {
+  const drafts = new Map<string, Draft>();
+  for (const field of host.querySelectorAll<Field>('[data-draft-key]')) {
+    if (!field.value) continue;
+    drafts.set(field.dataset.draftKey!, {
+      value: field.value,
+      focused: field === document.activeElement,
+      start: field.selectionStart,
+      end: field.selectionEnd,
+    });
+  }
+  return drafts;
+}
+
+/** Put the caret back where the writer left it. */
+function restoreFocus(host: HTMLElement, drafts: Map<string, Draft>): void {
+  for (const field of host.querySelectorAll<Field>('[data-draft-key]')) {
+    const draft = drafts.get(field.dataset.draftKey!);
+    if (draft?.focused) {
+      field.focus();
+      if (draft.start !== null) field.setSelectionRange(draft.start, draft.end ?? draft.start);
+      return;
+    }
+  }
+}
 
 export function renderPinSurface(host: HTMLElement, ctx: SurfaceContext): void {
   const { store, pinId, session, viewerId } = ctx;
@@ -51,6 +98,12 @@ export function renderPinSurface(host: HTMLElement, ctx: SurfaceContext): void {
     return;
   }
   host.hidden = false;
+
+  const drafts = harvestDrafts(host);
+  const applyDraft = (field: Field, key: string, fallback = ''): void => {
+    field.dataset.draftKey = key;
+    field.value = drafts.get(key)?.value ?? fallback;
+  };
 
   const isOwner = store.me?.role === 'owner';
   // the past is read-only: writing happens only at the table's current session
@@ -90,7 +143,7 @@ export function renderPinSurface(host: HTMLElement, ctx: SurfaceContext): void {
       if (entry && mine && writable && store.canEdit(entry)) {
         // still in the grace window: the author may amend
         const area = el('textarea');
-        area.value = entry.text;
+        applyDraft(area, `testimony:${event.id}`, entry.text);
         const save = el('button', undefined, 'amend');
         save.addEventListener('click', () => {
           if (area.value.trim()) store.writeTestimony(event.id, area.value.trim()).catch(oops);
@@ -98,17 +151,16 @@ export function renderPinSurface(host: HTMLElement, ctx: SurfaceContext): void {
         const hint = el('p', 'grace-hint', 'open until the next session begins');
         t.append(area, save, hint);
         if (!entry.markText) {
-          t.appendChild(
-            lineForm(`leave a mark on this place (${MARK_MAX_CHARS} chars)`, 'scrawl', (v) => {
-              store.promoteMark(entry.id, v).catch(oops);
-            }, MARK_MAX_CHARS),
-          );
+          const markForm = lineForm(`leave a mark on this place (${MARK_MAX_CHARS} chars)`, 'scrawl', (v) => store.promoteMark(entry.id, v), MARK_MAX_CHARS);
+          applyDraft(markForm.querySelector('input')!, `mark:${entry.id}`);
+          t.appendChild(markForm);
         }
       } else if (entry) {
         t.appendChild(el('p', undefined, entry.text));
       } else if (mine && writable) {
         const area = el('textarea');
         area.placeholder = 'what happened here, as you remember it';
+        applyDraft(area, `testimony:${event.id}`);
         const save = el('button', undefined, 'testify');
         save.addEventListener('click', () => {
           if (area.value.trim()) store.writeTestimony(event.id, area.value.trim()).catch(oops);
@@ -125,11 +177,12 @@ export function renderPinSurface(host: HTMLElement, ctx: SurfaceContext): void {
   if (isOwner && writable) {
     const add = el('section', 'add-event');
     add.appendChild(el('h3', undefined, `New event · Session ${data.campaign.currentSession}`));
-    add.appendChild(lineForm('one line of canon: what happened here', 'drop it', (v) => {
-      store.addEvent(pinId, v).catch(oops);
-    }));
+    const eventForm = lineForm('one line of canon: what happened here', 'drop it', (v) => store.addEvent(pinId, v));
+    applyDraft(eventForm.querySelector('input')!, `event:${pinId}`);
+    add.appendChild(eventForm);
     frag.appendChild(add);
   }
 
   host.replaceChildren(frag);
+  restoreFocus(host, drafts);
 }

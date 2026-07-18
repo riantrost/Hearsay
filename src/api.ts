@@ -56,8 +56,10 @@ export async function joinCampaign(code: string, name: string): Promise<{ campai
 
 /** The campaign as your seat is allowed to see it — the server strips the rest. */
 export async function fetchCampaign(seat: Seat): Promise<CampaignData> {
+  // network-first is the whole point: no HTTP cache between the table and now
   const res = await fetch(`/api/campaigns/${encodeURIComponent(seat.campaignId)}`, {
     headers: { Authorization: `Bearer ${seat.token}` },
+    cache: 'no-store',
   }).then(expectOk);
   return (await res.json()) as CampaignData;
 }
