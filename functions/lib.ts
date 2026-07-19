@@ -9,6 +9,9 @@ import type { Campaign, CampaignData, Member, Pin, SiteEvent, Testimony } from '
 export interface Env {
   HEARSAY: KVNamespace;
   MAPS: R2Bucket;
+  /** Google OAuth client for seat recovery (optional — unset disables the feature). */
+  GOOGLE_CLIENT_ID?: string;
+  GOOGLE_CLIENT_SECRET?: string;
 }
 
 // Lawrence's Northmarch jpg is ~8 MB; anything past this isn't a table map
@@ -31,10 +34,36 @@ export const eventKey = (cid: string, id: string) => `c:${cid}:e:${id}`;
 export const testimonyKey = (cid: string, id: string) => `c:${cid}:t:${id}`;
 export const tokenKey = (token: string) => `tok:${token}`;
 export const codeKey = (code: string) => `code:${code.toUpperCase()}`;
+/** One record per Google account: the seats it can recover, across campaigns. */
+export const googleAccountKey = (sub: string) => `g:${sub}`;
+/** Short-lived post-callback auth session, handed to the SPA in a fragment. */
+export const googleSessionKey = (id: string) => `gs:${id}`;
 
 export interface TokenRecord {
   campaignId: string;
   memberId: string;
+}
+
+export interface GoogleAccount {
+  email: string;
+  seats: { campaignId: string; memberId: string }[];
+}
+
+export interface GoogleSession {
+  sub: string;
+  email: string;
+}
+
+/**
+ * Resolve a `gsession` handle minted by the OAuth callback. Sessions are
+ * single-purpose and short-lived (KV TTL); a missing one means the sign-in
+ * expired or was already spent.
+ */
+export async function requireGoogleSession(env: Env, gsession: unknown): Promise<GoogleSession | Response> {
+  if (typeof gsession !== 'string' || !gsession) return err(400, 'a google sign-in is required');
+  const session = await env.HEARSAY.get<GoogleSession>(googleSessionKey(gsession), 'json');
+  if (!session) return err(401, 'this google sign-in has expired — try again');
+  return session;
 }
 
 export async function putRecord(env: Env, key: string, record: unknown): Promise<void> {

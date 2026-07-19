@@ -100,6 +100,44 @@ export async function postMemberAction(seat: Seat, memberId: string, action: 'ap
   await post(seat, `/members/${encodeURIComponent(memberId)}`, { action });
 }
 
+// --- the Google recovery thread (docs/decisions.md: a thread, never a wall) ---
+
+/** Whether this deployment has the recovery thread configured at all. */
+export async function fetchAuthConfig(): Promise<{ google: boolean }> {
+  const res = await fetch('/api/auth/config').then(expectOk);
+  return (await res.json()) as { google: boolean };
+}
+
+/** Tie the seat you're sitting in to the Google account you just signed in as. */
+export async function postGoogleLink(seat: Seat, gsession: string): Promise<{ email: string }> {
+  const res = await fetch('/api/auth/link', {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${seat.token}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ gsession }),
+  }).then(expectOk);
+  return (await res.json()) as { email: string };
+}
+
+/** Fresh tokens for every seat linked to the signed-in Google account. */
+export async function postGoogleRecover(gsession: string): Promise<{ email: string; seats: Seat[] }> {
+  const res = await fetch('/api/auth/recover', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ gsession }),
+  }).then(expectOk);
+  return (await res.json()) as { email: string; seats: Seat[] };
+}
+
+/** Mint a fresh token for an existing member — the reclaim link's server half. */
+export async function postReclaim(seat: Seat, memberId: string): Promise<Seat> {
+  const body = (await (await post(seat, `/members/${encodeURIComponent(memberId)}`, { action: 'reclaim' })).json()) as {
+    campaignId: string;
+    memberId: string;
+    token: string;
+  };
+  return body;
+}
+
 export async function postRotateCode(seat: Seat): Promise<string> {
   const body = (await (await post(seat, '/code', {})).json()) as { joinCode: string };
   return body.joinCode;

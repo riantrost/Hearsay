@@ -4,12 +4,26 @@
 // membership proposals and rotates the join code.
 
 import './style.css';
+import { fetchAuthConfig, postGoogleLink, postGoogleRecover } from './api';
 import { ApiStore } from './apiStore';
 import { renderLanding } from './landing';
 import { renderMap } from './map/render';
 import { renderPinSurface } from './map/pinSurface';
 import { Viewport } from './map/viewport';
-import { clearSeat, loadSeat, saveSeat, type Seat } from './seat';
+import {
+  encodeSeatLink,
+  loadActiveSeat,
+  loadSeats,
+  parseGauth,
+  parseSeatLink,
+  rememberSeatGoogle,
+  rememberSeatLabel,
+  removeSeat,
+  saveSeat,
+  startGoogleFlow,
+  takeGoogleMode,
+  type Seat,
+} from './seat';
 
 const app = document.querySelector<HTMLDivElement>('#app')!;
 
@@ -19,24 +33,96 @@ const PIN_POLL_MS = 5000;
 /** Undoes the previous table's listeners/timers when the app re-boots. */
 let teardown: (() => void) | undefined;
 
+/** Whether this deployment has the Google recovery thread, asked once. */
+let authProbe: Promise<boolean> | undefined;
+function googleAvailable(): Promise<boolean> {
+  authProbe ??= fetchAuthConfig()
+    .then((c) => c.google)
+    .catch(() => false);
+  return authProbe;
+}
+
 async function boot(): Promise<void> {
   teardown?.();
   teardown = undefined;
-  const seat = loadSeat();
+  // a reclaim link carries a whole seat in the URL fragment — sit down in it,
+  // then scrub the token out of the address bar so it isn't left lying around
+  const reclaimed = parseSeatLink(location.hash);
+  if (reclaimed) {
+    history.replaceState(null, '', location.pathname + location.search);
+    saveSeat(reclaimed);
+    void boot();
+    return;
+  }
+  // ...or the Google callback landed us here with an auth-session handle
+  const gauth = parseGauth(location.hash);
+  if (gauth) {
+    history.replaceState(null, '', location.pathname + location.search);
+    await handleGoogleReturn(gauth);
+    return;
+  }
+  const seat = loadActiveSeat();
   if (!seat) {
-    renderLanding(app, onSeated);
+    showFrontDoor();
     return;
   }
   let store: ApiStore;
   try {
     store = await ApiStore.boot(seat);
   } catch (e) {
-    // the seat no longer answers (declined, or the table is gone)
-    clearSeat();
-    renderLanding(app, onSeated, e instanceof Error ? e.message : String(e));
+    // the seat no longer answers (declined, or the table is gone): drop this
+    // chair and let the front door offer whatever tables remain
+    removeSeat(seat.campaignId);
+    showFrontDoor(e instanceof Error ? e.message : String(e));
     return;
   }
-  renderTable(store);
+  // now that the campaign is loaded, cache its name for the tables picker
+  rememberSeatLabel(seat.campaignId, store.data.campaign.name);
+  renderTable(store, await googleAvailable());
+}
+
+/**
+ * Home from Google: either back the active seat up (link) or pull every
+ * linked seat onto this device (recover — the walked-into-the-shop-empty-
+ * handed case). The mode rode sessionStorage across the redirect; if it
+ * didn't survive, recovery is the safe reading.
+ */
+async function handleGoogleReturn(gauth: string): Promise<void> {
+  const mode = takeGoogleMode();
+  try {
+    if (mode === 'link') {
+      const seat = loadActiveSeat();
+      if (!seat) throw new Error('no active seat to back up');
+      const { email } = await postGoogleLink(seat, gauth);
+      rememberSeatGoogle(seat.campaignId, email);
+      void boot();
+      return;
+    }
+    const { email, seats } = await postGoogleRecover(gauth);
+    for (const s of seats) saveSeat({ ...s, google: email });
+    if (seats.length === 0) {
+      showFrontDoor(`no seats are backed up to ${email || 'that google account'} yet — join with a code, then back your seat up`);
+      return;
+    }
+    void boot();
+  } catch (e) {
+    showFrontDoor(e instanceof Error ? e.message : String(e));
+  }
+}
+
+/** The front door, reachable with a seat still held — adding a table costs none. */
+function showFrontDoor(notice?: string): void {
+  teardown?.();
+  teardown = undefined;
+  void googleAvailable().then((google) =>
+    renderLanding(app, {
+      onSeated,
+      onResume: () => void boot(),
+      notice,
+      google,
+      onGoogle: () => startGoogleFlow('recover'),
+    }),
+  );
 }
 
 function onSeated(seat: Seat): void {
@@ -44,7 +130,7 @@ function onSeated(seat: Seat): void {
   void boot();
 }
 
-function renderTable(store: ApiStore): void {
+function renderTable(store: ApiStore, googleOn: boolean): void {
   const ac = new AbortController();
   const signal = ac.signal;
   app.innerHTML = `
@@ -107,6 +193,24 @@ function renderTable(store: ApiStore): void {
   const isOwner = () => store.me?.role === 'owner';
   const canPlace = () => isOwner() && session === store.data.campaign.currentSession;
   const oops = (e: unknown) => alert(e instanceof Error ? e.message : String(e));
+
+  // hand a member a fresh chair for a new device: mint a reclaim seat, build
+  // the self-contained URL, copy it, and reveal it (prompt survives the poll's
+  // re-renders, and shows the full link even if clipboard is denied)
+  async function reclaimFor(memberId: string, name: string): Promise<void> {
+    try {
+      const seat = await store.mintReclaim(memberId);
+      const url = encodeSeatLink(seat, location.origin);
+      try {
+        await navigator.clipboard.writeText(url);
+      } catch {
+        /* clipboard may be blocked; the prompt still shows the link */
+      }
+      window.prompt(`Reclaim link for ${name} — hand it over privately; anyone with it can write as ${name}.`, url);
+    } catch (e) {
+      oops(e);
+    }
+  }
 
   function setPlacing(on: boolean): void {
     placing = on && canPlace();
@@ -193,17 +297,53 @@ function renderTable(store: ApiStore): void {
     seatLine.className = 'seat-line';
     const roleTag = me?.role === 'owner' ? ' (owner)' : me?.status === 'pending' ? ' (pending)' : '';
     seatLine.textContent = `at the table as ${me?.name ?? '?'}${roleTag}`;
+    // one browser can hold many chairs: the front door is reachable without
+    // giving this one up
+    const tables = document.createElement('button');
+    tables.className = 'tables';
+    tables.textContent = 'tables';
+    tables.title = 'switch tables or found/join another';
+    tables.addEventListener('click', () => showFrontDoor());
     const leave = document.createElement('button');
     leave.className = 'leave';
     leave.textContent = 'leave';
     leave.addEventListener('click', () => {
-      if (confirm('Leave this table? Your seat token is only recoverable by re-invite.')) {
-        clearSeat();
+      if (confirm('Forget this table on this device? Rejoin needs the code or a reclaim link from the owner.')) {
+        removeSeat(store.seat.campaignId);
         void boot();
       }
     });
-    seatLine.appendChild(leave);
+    // self-serve device handoff: any member can mint their own seat link (the
+    // owner also has one in the roster below, so keep the line uncluttered)
+    if (!isOwner() && me) {
+      const selfLink = document.createElement('button');
+      selfLink.className = 'reclaim';
+      selfLink.textContent = 'seat link';
+      selfLink.title = 'open your seat on another device';
+      selfLink.addEventListener('click', () => void reclaimFor(me.id, me.name));
+      seatLine.appendChild(selfLink);
+    }
+    seatLine.append(tables, leave);
     frag.appendChild(seatLine);
+
+    // the recovery thread: one tap ties this seat to a Google account, so a
+    // lost phone or a new device can find it with nothing else in hand
+    if (googleOn) {
+      const backup = document.createElement('div');
+      backup.className = 'backup-row';
+      const linked = loadSeats().find((s) => s.campaignId === store.seat.campaignId)?.google;
+      if (linked) {
+        backup.textContent = `seat backed up to ${linked}`;
+      } else {
+        backup.textContent = 'lose your phone, lose your seat — ';
+        const link = document.createElement('button');
+        link.className = 'backup';
+        link.textContent = 'back up with Google';
+        link.addEventListener('click', () => startGoogleFlow('link'));
+        backup.appendChild(link);
+      }
+      frag.appendChild(backup);
+    }
 
     if (me?.status === 'pending') {
       const hint = document.createElement('div');
@@ -239,6 +379,22 @@ function renderTable(store: ApiStore): void {
           }
         });
         row.append(approve, decline);
+        frag.appendChild(row);
+      }
+
+      // the roster: seated members, each re-seatable on a new device. A lost
+      // phone (or Safari evicting the seat) needn't orphan anyone's testimony —
+      // the owner hands back the same chair, no new membership, no re-approval.
+      for (const m of store.data.members.filter((x) => x.status === 'active')) {
+        const row = document.createElement('div');
+        row.className = 'member-row';
+        row.textContent = `${m.name}${m.role === 'owner' ? ' (owner)' : ''}${m.id === viewerId ? ' — you' : ''} `;
+        const reclaim = document.createElement('button');
+        reclaim.className = 'reclaim';
+        reclaim.textContent = 'seat link';
+        reclaim.title = m.id === viewerId ? 'open your seat on another device' : `re-seat ${m.name} on a new device`;
+        reclaim.addEventListener('click', () => void reclaimFor(m.id, m.name));
+        row.appendChild(reclaim);
         frag.appendChild(row);
       }
     }

@@ -177,6 +177,16 @@ export class ApiStore {
     await this.refresh();
   }
 
+  /**
+   * Mint a reclaim seat for an existing member (owner act) — a fresh token
+   * for the same identity, carried to a new device. Additive: the old token
+   * keeps working, matching "recoverable by re-invite".
+   */
+  async mintReclaim(memberId: string): Promise<Seat> {
+    const seat = await api.postReclaim(this.seat, memberId);
+    return { ...seat, label: this.data.campaign.name };
+  }
+
   async rotateCode(): Promise<void> {
     const joinCode = await api.postRotateCode(this.seat);
     this.data.campaign.joinCode = joinCode;
