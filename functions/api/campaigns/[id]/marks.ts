@@ -3,7 +3,7 @@
 // the shared mutation layer; the mark rides its testimony record.
 
 import { promoteMark } from '../../../../src/mutations';
-import { mutationError, param, putRecord, readJson, requireSeat, testimonyKey, type Env } from '../../../lib';
+import { ensureRecord, mutationError, param, putRecord, readJson, requireSeat, testimonyKey, type Env } from '../../../lib';
 
 export const onRequestPost: PagesFunction<Env> = async ({ request, env, params }) => {
   const cid = param(params.id);
@@ -15,6 +15,8 @@ export const onRequestPost: PagesFunction<Env> = async ({ request, env, params }
     return mutationError(new Error('malformed mark'));
   }
   try {
+    // your just-written testimony may not have reached KV's list yet
+    await ensureRecord(env, seat.data.testimony, body.testimonyId, testimonyKey(cid, body.testimonyId));
     const entry = promoteMark(seat.data, body.testimonyId, seat.member.id, body.text);
     await putRecord(env, testimonyKey(cid, entry.id), entry);
     return Response.json(entry);

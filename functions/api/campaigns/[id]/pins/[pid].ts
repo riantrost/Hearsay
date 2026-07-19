@@ -6,6 +6,7 @@
 
 import { revealPin, setPinHidden } from '../../../../../src/mutations';
 import {
+  ensureRecord,
   eventKey,
   mutationError,
   param,
@@ -27,6 +28,8 @@ export const onRequestPost: PagesFunction<Env> = async ({ request, env, params }
 
   const body = await readJson<{ action?: unknown; canonLine?: unknown; atmosphere?: unknown }>(request);
   try {
+    // a just-placed pin may not have reached KV's list yet — fetch it directly
+    await ensureRecord(env, seat.data.pins, pid, pinKey(cid, pid));
     if (body?.action === 'hide' || body?.action === 'unhide') {
       const pin = setPinHidden(seat.data, pid, body.action === 'hide');
       await putRecord(env, pinKey(cid, pin.id), pin);

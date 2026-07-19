@@ -77,6 +77,19 @@ export async function loadCampaignData(env: Env, cid: string): Promise<CampaignD
   return { campaign, members, pins, events, testimony };
 }
 
+/**
+ * KV `list` lags writes (eventual consistency, up to ~a minute): a record
+ * written moments ago can be missing from the assembled campaign even for
+ * the writer. Before a mutation refuses "no such X" over a specific record,
+ * ask KV for it directly — `get` reads your own writes where they were
+ * written, which is exactly the create-then-immediately-use case.
+ */
+export async function ensureRecord<T extends { id: string }>(env: Env, list: T[], id: string, key: string): Promise<void> {
+  if (list.some((r) => r.id === id)) return;
+  const rec = await env.HEARSAY.get<T>(key, 'json');
+  if (rec) list.push(rec);
+}
+
 export interface Seat {
   data: CampaignData;
   member: Member;

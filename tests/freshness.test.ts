@@ -68,4 +68,55 @@ describe('ApiStore.refresh', () => {
     await refreshing;
     expect(store.data.testimony.some((t) => t.id === 'tX')).toBe(true);
   });
+
+  // KV's list is eventually consistent: a snapshot fetched *after* a write
+  // can still be missing the written record for up to ~a minute. The store
+  // keeps a ledger of its own recent writes and patches them back in.
+  it('a laggy snapshot cannot un-place a fresh pin', async () => {
+    const store = await ApiStore.boot(seat);
+    route = (url, init) => {
+      if (init?.method === 'POST' && url.endsWith('/pins')) {
+        return { id: 'pX', campaignId: 'c1', x: 0.5, y: 0.5, name: 'New Place' };
+      }
+      return structuredClone(seed); // storage lag: pX missing from the snapshot
+    };
+    await store.addPin(0.5, 0.5, 'New Place');
+    let notifies = 0;
+    store.subscribe(() => notifies++);
+    await store.refresh();
+    expect(store.data.pins.some((p) => p.id === 'pX')).toBe(true);
+    expect(notifies).toBe(0); // the patched snapshot matches what we show: quiet
+  });
+
+  it('the clock never winds back on a laggy snapshot', async () => {
+    const store = await ApiStore.boot(seat);
+    const advanced = seed.campaign.currentSession + 1;
+    route = (url, init) => {
+      if (init?.method === 'POST' && url.endsWith('/session')) return { currentSession: advanced };
+      return structuredClone(seed); // still says the old session
+    };
+    await store.advanceSession();
+    await store.refresh();
+    expect(store.data.campaign.currentSession).toBe(advanced);
+  });
+
+  it('the ledger expires once the storage lag window passes', async () => {
+    vi.useFakeTimers();
+    try {
+      const store = await ApiStore.boot(seat);
+      route = (url, init) => {
+        if (init?.method === 'POST' && url.endsWith('/pins')) {
+          return { id: 'pX', campaignId: 'c1', x: 0.5, y: 0.5, name: 'New Place' };
+        }
+        return structuredClone(seed);
+      };
+      await store.addPin(0.5, 0.5, 'New Place');
+      vi.setSystemTime(Date.now() + 120_000); // well past the lag window
+      await store.refresh();
+      // past the window the server is the truth again, missing record and all
+      expect(store.data.pins.some((p) => p.id === 'pX')).toBe(false);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
 });

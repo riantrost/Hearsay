@@ -9,12 +9,26 @@ import type { CampaignData, Member, Pin, SiteEvent, Testimony } from './model';
 import { canEditTestimony } from './mutations';
 import type { Seat } from './seat';
 
+/**
+ * How long the server's storage may take to show a fresh write in an
+ * assembled campaign (Cloudflare KV's list is eventually consistent, up to
+ * ~a minute). A refetched snapshot younger than this can honestly be missing
+ * records this seat just wrote — so we hold on to them until the lag passes.
+ */
+const STORE_LAG_MS = 90_000;
+
 export class ApiStore {
   data: CampaignData;
   readonly seat: Seat;
   private listeners = new Set<() => void>();
   /** Bumped when a mutation's response applies — stale refreshes check it. */
   private writeStamp = 0;
+  /**
+   * This seat's own recent writes, keyed kind:id — patched back into any
+   * refetched snapshot that is missing them (see STORE_LAG_MS). One entry
+   * per record, newest wins; entries expire once the lag window passes.
+   */
+  private recentWrites = new Map<string, { at: number; patch: (data: CampaignData) => void }>();
 
   private constructor(seat: Seat, data: CampaignData) {
     this.seat = seat;
@@ -49,9 +63,33 @@ export class ApiStore {
     const stamp = this.writeStamp;
     const fresh = await api.fetchCampaign(this.seat);
     if (this.writeStamp !== stamp) return;
+    // a snapshot may lag this seat's own writes (server storage is
+    // eventually consistent) — patch them back in before comparing, so a
+    // laggy refetch can never make a just-placed pin vanish
+    const now = Date.now();
+    for (const [key, w] of this.recentWrites) {
+      if (now - w.at > STORE_LAG_MS) this.recentWrites.delete(key);
+      else w.patch(fresh);
+    }
     if (JSON.stringify(fresh) === JSON.stringify(this.data)) return;
     this.data = fresh;
     this.notify();
+  }
+
+  /** Remember an own-write so laggy refetches can't un-happen it. */
+  private noteWrite(key: string, patch: (data: CampaignData) => void): void {
+    this.recentWrites.set(key, { at: Date.now(), patch });
+  }
+
+  /**
+   * Replace-or-insert. Safe as a ledger patch because every ledgered record
+   * has one writer — pins/events are owner-authored, testimony is
+   * author-only — so this seat's copy is by definition the newest.
+   */
+  private static upsert<T extends { id: string }>(list: T[], record: T): void {
+    const i = list.findIndex((r) => r.id === record.id);
+    if (i >= 0) list[i] = record;
+    else list.push(record);
   }
 
   canEdit(t: Testimony): boolean {
@@ -61,14 +99,14 @@ export class ApiStore {
   async addPin(x: number, y: number, name: string): Promise<Pin> {
     const pin = await api.postPin(this.seat, x, y, name);
     this.data.pins.push(pin);
+    this.noteWrite(`p:${pin.id}`, (d) => ApiStore.upsert(d.pins, pin));
     this.notify();
     return pin;
   }
 
   private replacePin(pin: Pin): void {
-    const i = this.data.pins.findIndex((p) => p.id === pin.id);
-    if (i >= 0) this.data.pins[i] = pin;
-    else this.data.pins.push(pin);
+    ApiStore.upsert(this.data.pins, pin);
+    this.noteWrite(`p:${pin.id}`, (d) => ApiStore.upsert(d.pins, pin));
   }
 
   /** Stage or unstage an event-less pin (owner) — the secret layer's toggle. */
@@ -84,6 +122,7 @@ export class ApiStore {
     const { pin, event } = await api.postPinReveal(this.seat, pinId, canonLine, atmosphere);
     this.replacePin(pin);
     this.data.events.push(event);
+    this.noteWrite(`e:${event.id}`, (d) => ApiStore.upsert(d.events, event));
     this.notify();
     return pin;
   }
@@ -91,6 +130,7 @@ export class ApiStore {
   async addEvent(pinId: string, canonLine: string, atmosphere?: string): Promise<SiteEvent> {
     const event = await api.postEvent(this.seat, pinId, canonLine, atmosphere);
     this.data.events.push(event);
+    this.noteWrite(`e:${event.id}`, (d) => ApiStore.upsert(d.events, event));
     this.notify();
     return event;
   }
@@ -98,14 +138,17 @@ export class ApiStore {
   async advanceSession(): Promise<number> {
     const currentSession = await api.postSession(this.seat);
     this.data.campaign.currentSession = currentSession;
+    // the clock only runs forward: a laggy snapshot can't wind it back
+    this.noteWrite('session', (d) => {
+      d.campaign.currentSession = Math.max(d.campaign.currentSession, currentSession);
+    });
     this.notify();
     return currentSession;
   }
 
   private upsertTestimony(entry: Testimony): void {
-    const i = this.data.testimony.findIndex((t) => t.id === entry.id);
-    if (i >= 0) this.data.testimony[i] = entry;
-    else this.data.testimony.push(entry);
+    ApiStore.upsert(this.data.testimony, entry);
+    this.noteWrite(`t:${entry.id}`, (d) => ApiStore.upsert(d.testimony, entry));
     this.notify();
   }
 
