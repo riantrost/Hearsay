@@ -1,8 +1,8 @@
 // The bounty board's contracts (docs/decisions.md, "The bounty board"):
 // revenge is a member act, nailing it up is a canon act. A proposal is the
 // poster's and the owner's secret; approval puts it on the board for the
-// table; a strike settles it at the current session without erasing it;
-// a refusal deletes paper that never reached the board.
+// table; a strike settles it — stamped, never erased; a refusal deletes
+// paper that never reached the board.
 
 import { beforeEach, describe, expect, it } from 'vitest';
 import { seed } from '../src/data/seed';
@@ -16,10 +16,12 @@ beforeEach(() => {
 });
 
 describe('posting a bounty (a member act)', () => {
-  it('lands as a proposal stamped with the current session', () => {
+  it('lands as a proposal stamped with the moment it was posted', () => {
+    const before = Date.now();
     const b = postBounty(data, 'm2', 'The Grey Wizard', 'He burned my library. I want his hat.');
     expect(b.status).toBe('proposed');
-    expect(b.session).toBe(data.campaign.currentSession);
+    expect(b.postedAt).toBeGreaterThanOrEqual(before);
+    expect(b.postedAt).toBeLessThanOrEqual(Date.now());
     expect(data.bounties.some((x) => x.id === b.id)).toBe(true);
   });
 
@@ -78,10 +80,12 @@ describe('the owner resolves the board (canon acts)', () => {
     expect(() => declineBounty(data, 'b1')).toThrow('only a proposed bounty');
   });
 
-  it('a strike settles at the current session and keeps the paper', () => {
+  it('a strike settles with a stamp and keeps the paper', () => {
+    const before = Date.now();
     const b = strikeBounty(data, 'b1');
     expect(b.status).toBe('struck');
-    expect(b.struckSession).toBe(data.campaign.currentSession);
+    expect(b.struckAt).toBeGreaterThanOrEqual(before);
+    expect(b.struckAt).toBeLessThanOrEqual(Date.now());
     expect(data.bounties.some((x) => x.id === 'b1')).toBe(true);
   });
 

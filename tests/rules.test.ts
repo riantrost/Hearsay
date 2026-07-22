@@ -1,7 +1,7 @@
 // The rule layer's contracts, tested where they live (src/mutations.ts) —
 // the same functions run client-side in the ApiStore and server-side in the
 // Pages Functions, so these tests pin both at once: testimony closes on the
-// table's clock, marks are brevity-capped and author-only, membership
+// place's clock, marks are brevity-capped and author-only, membership
 // follows the proposal pattern.
 
 import { beforeEach, describe, expect, it } from 'vitest';
@@ -10,7 +10,6 @@ import { MARK_MAX_CHARS, MAX_ATMOSPHERE_CHARS, type CampaignData } from '../src/
 import {
   addEvent,
   addPin,
-  advanceSession,
   approveMember,
   canEditTestimony,
   declineMember,
@@ -37,8 +36,8 @@ beforeEach(() => {
   data = structuredClone(seed);
 });
 
-describe('the grace window (testimony closes on the table\'s clock)', () => {
-  it('keeps a fresh entry editable while no later-session event exists', () => {
+describe("the grace window (testimony closes on the place's clock)", () => {
+  it('keeps a fresh entry editable while no newer event exists at the pin', () => {
     const event = addEvent(data, 'p4', 'a skirmish at the fen edge');
     const entry = writeTestimony(data, event.id, 'm2', 'first draft');
     expect(canEditTestimony(data, entry)).toBe(true);
@@ -46,20 +45,50 @@ describe('the grace window (testimony closes on the table\'s clock)', () => {
     expect(data.testimony.find((t) => t.id === entry.id)?.text).toBe('second thoughts');
   });
 
-  it('closes the entry when the next session\'s first event lands', () => {
+  it('stays open when the table battles elsewhere — another pin is another clock', () => {
     const event = addEvent(data, 'p4', 'a skirmish at the fen edge');
     const entry = writeTestimony(data, event.id, 'm2', 'what I saw');
-    advanceSession(data);
-    expect(canEditTestimony(data, entry)).toBe(true); // advancing alone closes nothing
-    addEvent(data, 'p1', 'the next session begins at the keep');
+    addEvent(data, 'p1', 'meanwhile, at the keep');
+    expect(canEditTestimony(data, entry)).toBe(true);
+    writeTestimony(data, event.id, 'm2', 'still my words');
+    expect(data.testimony.find((t) => t.id === entry.id)?.text).toBe('still my words');
+  });
+
+  it('closes the entry when a newer event lands at the same pin', () => {
+    const event = addEvent(data, 'p4', 'a skirmish at the fen edge');
+    const entry = writeTestimony(data, event.id, 'm2', 'what I saw');
+    const later = addEvent(data, 'p4', 'a return to the fen');
+    later.createdAt = event.createdAt + 1000; // deterministic: strictly newer
     expect(canEditTestimony(data, entry)).toBe(false);
     expect(() => writeTestimony(data, event.id, 'm2', 'revisionism')).toThrow(/closed/);
   });
 
-  it('stamps a late-filled slot with the session it was written in', () => {
-    // e1 happened in session 1; Ossian never wrote for e2 (session 3)
+  it('a tie leaves the entry open — same moment, same clock tick', () => {
+    const event = addEvent(data, 'p4', 'a skirmish at the fen edge');
+    const entry = writeTestimony(data, event.id, 'm2', 'what I saw');
+    const twin = addEvent(data, 'p4', 'the same moment, another angle');
+    twin.createdAt = event.createdAt;
+    expect(canEditTestimony(data, entry)).toBe(true);
+  });
+
+  it('stamps a late-filled slot with the moment it was written, never the event\'s', () => {
+    // e1 happened on the first night; Ossian never wrote for e2
+    const before = Date.now();
     const entry = writeTestimony(data, 'e2', 'm3', 'better late');
-    expect(entry.session).toBe(data.campaign.currentSession);
+    expect(entry.createdAt).toBeGreaterThanOrEqual(before);
+    expect(entry.createdAt).toBeLessThanOrEqual(Date.now());
+  });
+});
+
+describe('the seal (the Campaign Manager closes a place)', () => {
+  // full seal contracts live in tests/pins.test.ts; this pins the grace-window interaction
+
+  it('a sealed pin closes even the latest event\'s testimony', () => {
+    const event = addEvent(data, 'p4', 'the fen falls silent');
+    const entry = writeTestimony(data, event.id, 'm2', 'last words');
+    data.pins.find((p) => p.id === 'p4')!.sealed = true;
+    expect(canEditTestimony(data, entry)).toBe(false);
+    expect(() => writeTestimony(data, event.id, 'm2', 'after the seal')).toThrow(/sealed/);
   });
 });
 
@@ -139,10 +168,12 @@ describe('membership acts (owner resolves the proposal)', () => {
 });
 
 describe('canon acts', () => {
-  it('drops pins with normalized coordinates and stamps events with the current session', () => {
+  it('drops pins with normalized coordinates and stamps events with the moment they land', () => {
     const pin = addPin(data, 0.5, 0.5, 'The Crossroads');
+    const before = Date.now();
     const event = addEvent(data, pin.id, 'first blood at the crossroads');
-    expect(event.session).toBe(data.campaign.currentSession);
+    expect(event.createdAt).toBeGreaterThanOrEqual(before);
+    expect(event.createdAt).toBeLessThanOrEqual(Date.now());
     // an open-table event stores no roster snapshot; the whole table resolves live
     expect(event.participantIds).toEqual([]);
     expect(eventParticipants(data, event)).toEqual(data.members.map((m) => m.id));

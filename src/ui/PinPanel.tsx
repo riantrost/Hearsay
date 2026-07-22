@@ -1,32 +1,45 @@
 // The pin panel: a site's lineage read top to bottom — each event's canon
-// headline, its atmosphere, then every seat's account. At the present it is
-// also the write surface, and the player's whole note flow is one box: write
-// your account, edit it freely (editing is just editing — no separate
-// "amend" mode), one Save button, until the table's clock seals it. Marks
-// survive as a quiet inline affordance on your own saved account. Drafts are
-// component state, so a background refresh can't touch them by construction.
+// headline, its atmosphere, then every seat's account. It is also the write
+// surface, and the player's whole note flow is one box: write your account,
+// edit it freely (editing is just editing — no separate "amend" mode), one
+// Save button, until the place's clock closes it (a newer event landing
+// here) or the Campaign Manager seals the place. Marks survive as a quiet
+// inline affordance on your own saved account. Drafts are component state,
+// so a background refresh can't touch them by construction.
 
 import { useMemo, useState } from 'preact/hooks';
 import { siteMarks } from '../derive';
-import { MARK_MAX_CHARS, MAX_ATMOSPHERE_CHARS, MAX_TESTIMONY_CHARS, type CampaignData, type SiteEvent, type Testimony } from '../model';
+import {
+  MARK_MAX_CHARS,
+  MAX_ATMOSPHERE_CHARS,
+  MAX_PIN_DESCRIPTION_CHARS,
+  MAX_TESTIMONY_CHARS,
+  type CampaignData,
+  type SiteEvent,
+  type Testimony,
+} from '../model';
 import { eventParticipants } from '../mutations';
 import type { ApiStore } from '../store';
-import { confirmDialog, oops } from './dialogs';
+import { confirmDialog, oops, textDialog } from './dialogs';
+import { fmtDay } from './format';
 
 export interface PinPanelProps {
   store: ApiStore;
   pinId: string;
-  session: number;
+  /** Owner: arm a map tap to reposition this pin (the panel closes to clear the map). */
+  onStartMove: (pinId: string) => void;
 }
 
-/** The session whose first event sealed this entry (for the locked caption). */
-function sealedBy(data: CampaignData, t: Testimony): number | null {
-  const later = data.events.filter((e) => e.session > t.session).map((e) => e.session);
-  return later.length ? Math.min(...later) : null;
+/** The event whose landing closed this entry (for the locked caption). */
+function closedBy(data: CampaignData, t: Testimony): SiteEvent | null {
+  const event = data.events.find((e) => e.id === t.eventId);
+  if (!event) return null;
+  const later = data.events.filter((e) => e.pinId === event.pinId && e.createdAt > event.createdAt);
+  return later.length ? later.reduce((a, b) => (b.createdAt < a.createdAt ? b : a)) : null;
 }
 
 /** Your slot on one event: the one box. */
-function YourAccount({ store, event, entry, writable }: { store: ApiStore; event: SiteEvent; entry: Testimony | undefined; writable: boolean }) {
+function YourAccount({ store, event, entry, writable, sealed }: { store: ApiStore; event: SiteEvent; entry: Testimony | undefined; writable: boolean; sealed: boolean }) {
   const [draft, setDraft] = useState<string | null>(null);
   const [picking, setPicking] = useState(false);
   const editable = writable && (!entry || store.canEdit(entry));
@@ -42,13 +55,13 @@ function YourAccount({ store, event, entry, writable }: { store: ApiStore; event
   };
 
   if (!editable) {
-    // sealed (or viewing the past): the account reads as text, plainly captioned
-    const lock = entry ? sealedBy(store.data, entry) : null;
+    // closed (or the place is sealed): the account reads as text, plainly captioned
+    const lock = entry ? closedBy(store.data, entry) : null;
     return (
-      <div class="your-account sealed">
+      <div class="your-account closed">
         {entry ? <p>{entry.text}</p> : <p class="empty-slot">no account written</p>}
-        {entry && writable && !store.canEdit(entry) && (
-          <p class="sealed-caption">Saved — locked when session {lock ?? store.data.campaign.currentSession} began</p>
+        {entry && !sealed && !store.canEdit(entry) && (
+          <p class="closed-caption">Saved — locked when a newer event landed here{lock ? ` (${fmtDay(lock.createdAt)})` : ''}</p>
         )}
         {entry?.markText && <p class="mark-caption">✎ highlighted: “{entry.markText}”</p>}
       </div>
@@ -96,7 +109,7 @@ function YourAccount({ store, event, entry, writable }: { store: ApiStore; event
             <button class="primary" disabled={!dirty} onClick={save}>
               Save
             </button>
-            {entry && <span class="grace-hint">editable until the next session begins</span>}
+            {entry && <span class="grace-hint">editable until the next event lands here</span>}
           </div>
           {entry?.markText ? (
             <p class="mark-caption">✎ highlighted: “{entry.markText}”</p>
@@ -161,24 +174,52 @@ function CanonForm({ heading, buttonLabel, submit, confirmMessage }: {
   );
 }
 
-export function PinPanel({ store, pinId, session }: PinPanelProps) {
+/** The owner's inline editor for the standing description of the place. */
+function DescriptionEditor({ store, pinId, initial, onDone }: { store: ApiStore; pinId: string; initial: string; onDone: () => void }) {
+  const [text, setText] = useState(initial);
+  const save = (): void => {
+    store
+      .describePin(pinId, text)
+      .then(onDone)
+      .catch(oops);
+  };
+  return (
+    <div class="desc-editor">
+      <textarea
+        placeholder="the standing character of this place — what it is now"
+        maxLength={MAX_PIN_DESCRIPTION_CHARS}
+        value={text}
+        onInput={(ev) => setText((ev.currentTarget as HTMLTextAreaElement).value)}
+      />
+      <div class="account-acts">
+        <button class="primary" onClick={save}>Save description</button>
+        <button class="quiet" onClick={onDone}>Cancel</button>
+      </div>
+    </div>
+  );
+}
+
+export function PinPanel({ store, pinId, onStartMove }: PinPanelProps) {
   const data = store.data;
   const viewerId = store.seat.memberId;
   const pin = data.pins.find((p) => p.id === pinId);
   // "who was there" picker state, keyed naturally by this component instance
   const [excluded, setExcluded] = useState<ReadonlySet<string>>(new Set());
+  const [editingDesc, setEditingDesc] = useState(false);
   const events = useMemo(
-    () => data.events.filter((e) => e.pinId === pinId && e.session <= session).sort((a, b) => a.session - b.session),
-    [data, pinId, session],
+    () => data.events.filter((e) => e.pinId === pinId).sort((a, b) => a.createdAt - b.createdAt || a.id.localeCompare(b.id)),
+    [data, pinId],
   );
   if (!pin) return <p class="panel-hint">this place is gone from the map</p>;
 
   const isOwner = store.me?.role === 'owner';
-  const writable = session === data.campaign.currentSession;
-  const marks = siteMarks(data, pinId, session);
-  const pinIsUntouched = data.events.every((e) => e.pinId !== pinId);
-  const first = events[0]?.session;
-  const last = events[events.length - 1]?.session;
+  const sealed = !!pin.sealed;
+  // sealed closes the place to accounts and marks — the owner's included;
+  // the owner keeps canon acts (events, move, describe, rename, unseal)
+  const writable = !sealed;
+  const marks = siteMarks(data, pinId);
+  const pinIsUntouched = events.length === 0;
+  const latestAt = events.length ? events[events.length - 1].createdAt : 0;
 
   const dropEvent = (canon: string, air: string | undefined): Promise<unknown> => {
     const roster = data.members;
@@ -192,43 +233,83 @@ export function PinPanel({ store, pinId, session }: PinPanelProps) {
     });
   };
 
+  const rename = async (): Promise<void> => {
+    const name = await textDialog('Rename this place', { title: pin.name, initial: pin.name, confirmLabel: 'Rename' });
+    if (!name?.trim() || name.trim() === pin.name) return;
+    store.renamePin(pinId, name.trim()).catch(oops);
+  };
+
+  const toggleSeal = async (): Promise<void> => {
+    if (!sealed) {
+      const sure = await confirmDialog(
+        `Seal “${pin.name}”? The table can keep reading everything here, but no new accounts or graffiti land until you unseal it.`,
+        { title: 'Seal this place', confirmLabel: 'Seal it' },
+      );
+      if (!sure) return;
+    }
+    store.setPinSealed(pinId, !sealed).catch(oops);
+  };
+
   return (
     <div class="pin-panel">
       <h2>{pin.name}</h2>
       {events.length > 0 && (
         <p class="site-line">
           {events.length === 1
-            ? `one event · session ${first}`
-            : first === last
-              ? `${events.length} events · session ${first}`
-              : `${events.length} events · sessions ${first}–${last}`}
+            ? `one event · ${fmtDay(events[0].createdAt)}`
+            : fmtDay(events[0].createdAt) === fmtDay(latestAt)
+              ? `${events.length} events · ${fmtDay(latestAt)}`
+              : `${events.length} events · ${fmtDay(events[0].createdAt)} – ${fmtDay(latestAt)}`}
         </p>
+      )}
+
+      {editingDesc ? (
+        <DescriptionEditor store={store} pinId={pinId} initial={pin.description ?? ''} onDone={() => setEditingDesc(false)} />
+      ) : (
+        pin.description && <p class="pin-desc">{pin.description}</p>
+      )}
+
+      {sealed && (
+        <p class="sealed-notice">
+          {isOwner
+            ? 'Sealed — the record is closed to new accounts and graffiti until you unseal it.'
+            : 'The Campaign Manager has sealed this place — its record is closed, but yours to read.'}
+        </p>
+      )}
+
+      {isOwner && (
+        <div class="pin-tools">
+          <button class="quiet" onClick={() => onStartMove(pinId)}>Move</button>
+          <button class="quiet" onClick={() => void rename()}>Rename</button>
+          {!editingDesc && (
+            <button class="quiet" onClick={() => setEditingDesc(true)}>{pin.description ? 'Edit description' : 'Describe'}</button>
+          )}
+          {!pin.hidden && !pinIsUntouched && (
+            <button class="quiet" onClick={() => void toggleSeal()}>{sealed ? 'Unseal' : 'Seal'}</button>
+          )}
+        </div>
       )}
 
       {pin.hidden && isOwner && (
         <section class="staged-tools">
           <p class="staged-hint">hidden — the table cannot see this place</p>
-          {writable && (
-            <>
-              <CanonForm
-                heading="Reveal to the table"
-                buttonLabel="Reveal to table"
-                confirmMessage={`Reveal “${pin.name}” to the table? Everything prepped here becomes theirs to read — there is no way back to hidden.`}
-                submit={(canon, air) => store.revealPin(pinId, canon, air)}
-              />
-              {pinIsUntouched && (
-                <button class="quiet" onClick={() => store.setPinHidden(pinId, false).catch(oops)}>
-                  Unhide pin
-                </button>
-              )}
-            </>
+          <CanonForm
+            heading="Reveal to the table"
+            buttonLabel="Reveal to table"
+            confirmMessage={`Reveal “${pin.name}” to the table? Everything prepped here becomes theirs to read — there is no way back to hidden.`}
+            submit={(canon, air) => store.revealPin(pinId, canon, air)}
+          />
+          {pinIsUntouched && (
+            <button class="quiet" onClick={() => store.setPinHidden(pinId, false).catch(oops)}>
+              Unhide pin
+            </button>
           )}
         </section>
       )}
       {!pin.hidden && events.length === 0 && isOwner && (
         <section class="ghost-tools">
           <p class="ghost-hint">no history here yet — the first event makes this place real to the table</p>
-          {writable && pinIsUntouched && (
+          {pinIsUntouched && (
             <button class="quiet" title="the table will not see this place until you reveal it" onClick={() => store.setPinHidden(pinId, true).catch(oops)}>
               Hide pin
             </button>
@@ -237,12 +318,13 @@ export function PinPanel({ store, pinId, session }: PinPanelProps) {
       )}
 
       {events.map((event) => {
-        const fresh = event.session === data.campaign.currentSession && writable;
+        // the open event: nothing newer has landed here, and the place is not sealed
+        const fresh = event.createdAt === latestAt && writable;
         const participants = eventParticipants(data, event);
         return (
           <section class={'event' + (fresh ? ' fresh' : '')} key={event.id}>
             <h3>
-              Session {event.session}
+              {fmtDay(event.createdAt)}
               {fresh && <span class="now-tag">now</span>}
               <span class="slot-jacks">
                 {participants.map((memberId) => {
@@ -262,7 +344,7 @@ export function PinPanel({ store, pinId, session }: PinPanelProps) {
                 return (
                   <div class="testimony mine" key={memberId}>
                     <span class="testimony-author">{member?.name ?? '?'} (you)</span>
-                    <YourAccount key={event.id + ':' + memberId} store={store} event={event} entry={entry} writable={writable} />
+                    <YourAccount key={event.id + ':' + memberId} store={store} event={event} entry={entry} writable={writable} sealed={sealed} />
                   </div>
                 );
               }
@@ -287,7 +369,7 @@ export function PinPanel({ store, pinId, session }: PinPanelProps) {
         </section>
       )}
 
-      {isOwner && writable && (
+      {isOwner && (
         <section class="add-event">
           {data.members.length > 1 && (
             <div class="participant-picker">
@@ -311,7 +393,7 @@ export function PinPanel({ store, pinId, session }: PinPanelProps) {
             </div>
           )}
           <CanonForm
-            heading={pin.hidden ? `Prep a hidden event · Session ${data.campaign.currentSession}` : `New event · Session ${data.campaign.currentSession}`}
+            heading={pin.hidden ? 'Prep a hidden event' : 'New event'}
             buttonLabel={pin.hidden ? 'Add hidden event' : 'Add event'}
             submit={dropEvent}
           />

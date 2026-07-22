@@ -1,62 +1,78 @@
-// Recency illumination is derived, never stored: a pin's aliveness comes
-// from its latest event's session stamp measured against the *viewed*
-// session, so the scrubber replays the glow. Open-slot jacks come from the
-// same pulse — the voices still missing from the latest session's events.
-// (V1 requirement 1: recent activity visible on the map at a glance.)
+// Recency illumination is derived, never stored: a pin's aliveness is its
+// latest event measured against the campaign's own newest event — never
+// wall-clock now, so an idle month freezes the map in its last illumination
+// instead of dimming everything (every system survives a low-energy month).
+// Open-slot jacks come from the same pulse — the voices still missing from
+// the site's latest burst. (V1 requirement 1: recent activity at a glance.)
 
 import { describe, expect, it } from 'vitest';
-import { pinPulse, pulseClass } from '../src/derive';
-import { seed } from '../src/data/seed';
+import { FRESH_WINDOW_MS, SETTLED_GAP_MS, pinPulse, pulseClass } from '../src/derive';
+import { DAY, HOUR, night, seed } from '../src/data/seed';
 
 describe('pinPulse', () => {
   it('is null where nothing has happened — a ghost has no heartbeat', () => {
-    expect(pinPulse(seed, 'p3', 4)).toBeNull();
+    expect(pinPulse(seed, 'p3')).toBeNull();
   });
 
-  it('measures age against the viewed session, not the calendar', () => {
-    // p2's latest event is session 3: one session old at the present (s4)
-    expect(pinPulse(seed, 'p2', 4)).toMatchObject({ latestSession: 3, age: 1 });
-    // p1's only event is session 2
-    expect(pinPulse(seed, 'p1', 4)).toMatchObject({ latestSession: 2, age: 2 });
-    // p4 stirred this very session
-    expect(pinPulse(seed, 'p4', 4)).toMatchObject({ latestSession: 4, age: 0 });
+  it('measures the gap against the campaign\'s newest event, not the calendar', () => {
+    // the campaign's newest event is e4 (night 4)
+    expect(pinPulse(seed, 'p2')).toMatchObject({ latestAt: night(3), gap: DAY });
+    expect(pinPulse(seed, 'p1')).toMatchObject({ latestAt: night(2), gap: 2 * DAY });
+    // p4 is where it's happening
+    expect(pinPulse(seed, 'p4')).toMatchObject({ latestAt: night(4), gap: 0 });
   });
 
-  it('replays under the scrubber: the map as of session 3 glows where session 3 happened', () => {
-    expect(pinPulse(seed, 'p2', 3)).toMatchObject({ latestSession: 3, age: 0 });
-    // scrubbed before its second event, p2's pulse comes from session 1
-    expect(pinPulse(seed, 'p2', 2)).toMatchObject({ latestSession: 1, age: 1 });
+  it('holds its shape under a uniform shift — the anchor is the campaign, never now', () => {
+    const shifted = structuredClone(seed);
+    for (const e of shifted.events) e.createdAt -= 30 * DAY;
+    for (const t of shifted.testimony) t.createdAt -= 30 * DAY;
+    expect(pinPulse(shifted, 'p2')?.gap).toBe(DAY);
+    expect(pinPulse(shifted, 'p4')?.gap).toBe(0);
   });
 
-  it('counts testimony slots on the latest session only — old completeness is not map signal', () => {
-    // p2 at s4: latest event e2 has slots m2+m3, only m2 (t3) has told
-    expect(pinPulse(seed, 'p2', 4)).toMatchObject({ filled: 1, total: 2 });
-    // scrubbed to s2, the latest is e1 where both voices are in
-    expect(pinPulse(seed, 'p2', 2)).toMatchObject({ filled: 2, total: 2 });
+  it('counts testimony slots on the latest burst only — old completeness is not map signal', () => {
+    // p2's latest burst is e2 alone: slots m2+m3, only m2 (t3) has told
+    expect(pinPulse(seed, 'p2')).toMatchObject({ filled: 1, total: 2 });
     // p4's fresh event: three slots, only Thistle's (t5) written
-    expect(pinPulse(seed, 'p4', 4)).toMatchObject({ filled: 1, total: 3 });
+    expect(pinPulse(seed, 'p4')).toMatchObject({ filled: 1, total: 3 });
   });
 
-  it('aggregates slots across events sharing the latest session', () => {
+  it('aggregates slots across events within one evening of the site\'s newest', () => {
     const data = structuredClone(seed);
-    data.events.push({ id: 'e5', pinId: 'p4', session: 4, canonLine: 'A second bell.', participantIds: ['m2'] });
-    expect(pinPulse(data, 'p4', 4)).toMatchObject({ filled: 1, total: 4 });
+    data.events.push({ id: 'e5', pinId: 'p4', createdAt: night(4) + 2 * HOUR, canonLine: 'A second bell.', participantIds: ['m2'] });
+    expect(pinPulse(data, 'p4')).toMatchObject({ filled: 1, total: 4 });
+  });
+
+  it('leaves an older visit out of the burst — a return night stands alone', () => {
+    const data = structuredClone(seed);
+    // a return to the fen a week later: the new burst is just this event
+    data.events.push({ id: 'e6', pinId: 'p4', createdAt: night(4) + 7 * DAY, canonLine: 'The bell again.', participantIds: ['m2'] });
+    expect(pinPulse(data, 'p4')).toMatchObject({ latestAt: night(4) + 7 * DAY, filled: 0, total: 1 });
   });
 
   it('reads seat-filtered data honestly: a withheld entry is an open slot', () => {
     // a player seat never receives pending Thistle's t5 — the slot reads open
     const filtered = structuredClone(seed);
     filtered.testimony = filtered.testimony.filter((t) => t.id !== 't5');
-    expect(pinPulse(filtered, 'p4', 4)).toMatchObject({ filled: 0, total: 3 });
+    expect(pinPulse(filtered, 'p4')).toMatchObject({ filled: 0, total: 3 });
   });
 });
 
 describe('pulseClass', () => {
-  it('buckets: this session glows, recent reads normal, three sessions quiet cools to ink', () => {
+  it('buckets: tonight glows, a recent night reads normal, three quiet weeks cool to ink', () => {
     expect(pulseClass(0)).toBe(' fresh');
-    expect(pulseClass(1)).toBe('');
-    expect(pulseClass(2)).toBe('');
-    expect(pulseClass(3)).toBe(' settled');
-    expect(pulseClass(9)).toBe(' settled');
+    expect(pulseClass(FRESH_WINDOW_MS)).toBe(' fresh');
+    expect(pulseClass(DAY)).toBe('');
+    expect(pulseClass(SETTLED_GAP_MS - 1)).toBe('');
+    expect(pulseClass(SETTLED_GAP_MS)).toBe(' settled');
+    expect(pulseClass(90 * DAY)).toBe(' settled');
+  });
+
+  it('a long-quiet site cools while the newest keeps its glow', () => {
+    const data = structuredClone(seed);
+    // the table returns to the fen after a long winter
+    data.events.push({ id: 'e7', pinId: 'p4', createdAt: night(4) + 40 * DAY, canonLine: 'Spring at the fen.', participantIds: [] });
+    expect(pulseClass(pinPulse(data, 'p4')!.gap)).toBe(' fresh');
+    expect(pulseClass(pinPulse(data, 'p2')!.gap)).toBe(' settled'); // 41 days behind
   });
 });

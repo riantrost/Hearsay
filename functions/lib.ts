@@ -32,6 +32,7 @@ export function mutationError(e: unknown): Response {
   const msg = e instanceof Error ? e.message : String(e);
   if (msg.startsWith('no such')) return err(404, msg);
   if (msg.startsWith('testimony is closed')) return err(409, msg);
+  if (msg.startsWith('sealed')) return err(409, msg);
   return err(400, msg);
 }
 
@@ -43,7 +44,6 @@ interface CampaignRow {
   name: string;
   map_w: number;
   map_h: number;
-  current_session: number;
   join_code: string;
 }
 const rowToCampaign = (r: CampaignRow): Campaign => ({
@@ -53,7 +53,6 @@ const rowToCampaign = (r: CampaignRow): Campaign => ({
   mapImageUrl: `/api/maps/${r.id}`,
   mapW: r.map_w,
   mapH: r.map_h,
-  currentSession: r.current_session,
   joinCode: r.join_code,
 });
 
@@ -79,7 +78,8 @@ interface PinRow {
   y: number;
   name: string;
   hidden: number;
-  hidden_until_session: number | null;
+  description: string | null;
+  sealed: number;
 }
 const rowToPin = (r: PinRow): Pin => ({
   id: r.id,
@@ -89,13 +89,14 @@ const rowToPin = (r: PinRow): Pin => ({
   name: r.name,
   // absent-when-false keeps the wire shape identical to the KV records
   ...(r.hidden ? { hidden: true } : {}),
-  ...(r.hidden_until_session !== null ? { hiddenUntilSession: r.hidden_until_session } : {}),
+  ...(r.description !== null ? { description: r.description } : {}),
+  ...(r.sealed ? { sealed: true } : {}),
 });
 
 interface EventRow {
   id: string;
   pin_id: string;
-  session: number;
+  created_at: number;
   canon_line: string;
   atmosphere: string | null;
   participant_ids: string;
@@ -103,7 +104,7 @@ interface EventRow {
 const rowToEvent = (r: EventRow): SiteEvent => ({
   id: r.id,
   pinId: r.pin_id,
-  session: r.session,
+  createdAt: r.created_at,
   canonLine: r.canon_line,
   ...(r.atmosphere !== null ? { atmosphere: r.atmosphere } : {}),
   participantIds: JSON.parse(r.participant_ids) as string[],
@@ -113,7 +114,7 @@ interface TestimonyRow {
   id: string;
   event_id: string;
   member_id: string;
-  session: number;
+  created_at: number;
   text: string;
   mark_text: string | null;
 }
@@ -121,7 +122,7 @@ const rowToTestimony = (r: TestimonyRow): Testimony => ({
   id: r.id,
   eventId: r.event_id,
   memberId: r.member_id,
-  session: r.session,
+  createdAt: r.created_at,
   text: r.text,
   ...(r.mark_text !== null ? { markText: r.mark_text } : {}),
 });
@@ -132,9 +133,9 @@ interface BountyRow {
   posted_by: string;
   target: string;
   reason: string;
-  session: number;
+  posted_at: number;
   status: string;
-  struck_session: number | null;
+  struck_at: number | null;
 }
 const rowToBounty = (r: BountyRow): Bounty => ({
   id: r.id,
@@ -142,9 +143,9 @@ const rowToBounty = (r: BountyRow): Bounty => ({
   postedBy: r.posted_by,
   target: r.target,
   reason: r.reason,
-  session: r.session,
+  postedAt: r.posted_at,
   status: r.status as Bounty['status'],
-  ...(r.struck_session !== null ? { struckSession: r.struck_session } : {}),
+  ...(r.struck_at !== null ? { struckAt: r.struck_at } : {}),
 });
 
 // ---------------------------------------------------------------------------
@@ -176,11 +177,11 @@ export async function loadCampaignData(env: Env, cid: string): Promise<CampaignD
 
 export async function saveCampaign(env: Env, c: Campaign): Promise<void> {
   await env.DB.prepare(
-    `INSERT INTO campaigns (id, name, map_w, map_h, current_session, join_code) VALUES (?, ?, ?, ?, ?, ?)
+    `INSERT INTO campaigns (id, name, map_w, map_h, join_code) VALUES (?, ?, ?, ?, ?)
      ON CONFLICT(id) DO UPDATE SET name = excluded.name, map_w = excluded.map_w, map_h = excluded.map_h,
-       current_session = excluded.current_session, join_code = excluded.join_code`,
+       join_code = excluded.join_code`,
   )
-    .bind(c.id, c.name, c.mapW, c.mapH, c.currentSession, c.joinCode)
+    .bind(c.id, c.name, c.mapW, c.mapH, c.joinCode)
     .run();
 }
 
@@ -195,39 +196,39 @@ export async function saveMember(env: Env, m: Member): Promise<void> {
 
 export async function savePin(env: Env, p: Pin): Promise<void> {
   await env.DB.prepare(
-    `INSERT INTO pins (id, campaign_id, x, y, name, hidden, hidden_until_session) VALUES (?, ?, ?, ?, ?, ?, ?)
+    `INSERT INTO pins (id, campaign_id, x, y, name, hidden, description, sealed) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
      ON CONFLICT(id) DO UPDATE SET x = excluded.x, y = excluded.y, name = excluded.name,
-       hidden = excluded.hidden, hidden_until_session = excluded.hidden_until_session`,
+       hidden = excluded.hidden, description = excluded.description, sealed = excluded.sealed`,
   )
-    .bind(p.id, p.campaignId, p.x, p.y, p.name, p.hidden ? 1 : 0, p.hiddenUntilSession ?? null)
+    .bind(p.id, p.campaignId, p.x, p.y, p.name, p.hidden ? 1 : 0, p.description ?? null, p.sealed ? 1 : 0)
     .run();
 }
 
 export async function saveEvent(env: Env, cid: string, e: SiteEvent): Promise<void> {
   await env.DB.prepare(
-    `INSERT INTO events (id, campaign_id, pin_id, session, canon_line, atmosphere, participant_ids) VALUES (?, ?, ?, ?, ?, ?, ?)
+    `INSERT INTO events (id, campaign_id, pin_id, created_at, canon_line, atmosphere, participant_ids) VALUES (?, ?, ?, ?, ?, ?, ?)
      ON CONFLICT(id) DO UPDATE SET canon_line = excluded.canon_line, atmosphere = excluded.atmosphere,
        participant_ids = excluded.participant_ids`,
   )
-    .bind(e.id, cid, e.pinId, e.session, e.canonLine, e.atmosphere ?? null, JSON.stringify(e.participantIds))
+    .bind(e.id, cid, e.pinId, e.createdAt, e.canonLine, e.atmosphere ?? null, JSON.stringify(e.participantIds))
     .run();
 }
 
 export async function saveTestimony(env: Env, cid: string, t: Testimony): Promise<void> {
   await env.DB.prepare(
-    `INSERT INTO testimony (id, campaign_id, event_id, member_id, session, text, mark_text) VALUES (?, ?, ?, ?, ?, ?, ?)
+    `INSERT INTO testimony (id, campaign_id, event_id, member_id, created_at, text, mark_text) VALUES (?, ?, ?, ?, ?, ?, ?)
      ON CONFLICT(id) DO UPDATE SET text = excluded.text, mark_text = excluded.mark_text`,
   )
-    .bind(t.id, cid, t.eventId, t.memberId, t.session, t.text, t.markText ?? null)
+    .bind(t.id, cid, t.eventId, t.memberId, t.createdAt, t.text, t.markText ?? null)
     .run();
 }
 
 export async function saveBounty(env: Env, b: Bounty): Promise<void> {
   await env.DB.prepare(
-    `INSERT INTO bounties (id, campaign_id, posted_by, target, reason, session, status, struck_session) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-     ON CONFLICT(id) DO UPDATE SET status = excluded.status, struck_session = excluded.struck_session`,
+    `INSERT INTO bounties (id, campaign_id, posted_by, target, reason, posted_at, status, struck_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+     ON CONFLICT(id) DO UPDATE SET status = excluded.status, struck_at = excluded.struck_at`,
   )
-    .bind(b.id, b.campaignId, b.postedBy, b.target, b.reason, b.session, b.status, b.struckSession ?? null)
+    .bind(b.id, b.campaignId, b.postedBy, b.target, b.reason, b.postedAt, b.status, b.struckAt ?? null)
     .run();
 }
 

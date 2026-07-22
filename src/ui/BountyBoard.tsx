@@ -7,6 +7,7 @@ import { useState } from 'preact/hooks';
 import { MAX_BOUNTY_REASON_CHARS, MAX_BOUNTY_TARGET_CHARS, type Bounty } from '../model';
 import type { ApiStore } from '../store';
 import { confirmDialog, oops } from './dialogs';
+import { fmtDay } from './format';
 
 function BountyCard({ store, b }: { store: ApiStore; b: Bounty }) {
   const poster = store.data.members.find((m) => m.id === b.postedBy);
@@ -23,9 +24,9 @@ function BountyCard({ store, b }: { store: ApiStore; b: Bounty }) {
       <h3>{b.target}</h3>
       <p>{b.reason}</p>
       <div class="bounty-byline">
-        {b.status === 'struck'
-          ? `sworn by ${poster?.name ?? '?'} · session ${b.session} — settled, session ${b.struckSession}`
-          : `sworn by ${poster?.name ?? '?'} · session ${b.session}`}
+        {b.status === 'struck' && b.struckAt !== undefined
+          ? `sworn by ${poster?.name ?? '?'} · ${fmtDay(b.postedAt)} — settled ${fmtDay(b.struckAt)}`
+          : `sworn by ${poster?.name ?? '?'} · ${fmtDay(b.postedAt)}`}
       </div>
       {b.status === 'proposed' &&
         (isOwner ? (
@@ -59,8 +60,8 @@ export function BountyBoard({ store }: { store: ApiStore }) {
 
   const groups: [string, Bounty[]][] = [
     ['Awaiting review', bounties.filter((b) => b.status === 'proposed')],
-    ['Posted', [...bounties.filter((b) => b.status === 'posted')].sort((a, z) => z.session - a.session)],
-    ['Settled', [...bounties.filter((b) => b.status === 'struck')].sort((a, z) => (z.struckSession ?? 0) - (a.struckSession ?? 0))],
+    ['Posted', [...bounties.filter((b) => b.status === 'posted')].sort((a, z) => z.postedAt - a.postedAt)],
+    ['Settled', [...bounties.filter((b) => b.status === 'struck')].sort((a, z) => (z.struckAt ?? 0) - (a.struckAt ?? 0))],
   ];
 
   const swear = (ev: SubmitEvent): void => {

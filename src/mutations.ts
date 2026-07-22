@@ -11,6 +11,7 @@ import {
   MAX_ATMOSPHERE_CHARS,
   MAX_BOUNTY_REASON_CHARS,
   MAX_BOUNTY_TARGET_CHARS,
+  MAX_PIN_DESCRIPTION_CHARS,
   MAX_TESTIMONY_CHARS,
 } from './model';
 
@@ -71,12 +72,18 @@ export function visibleData(data: CampaignData, viewerId: string): CampaignData 
 }
 
 /**
- * Testimony closes on the table's clock (docs/decisions.md): an entry is
- * editable until the next session's first event lands on the campaign —
- * i.e. while no event exists with a session later than the entry's stamp.
+ * Testimony closes on the *place's* clock (docs/decisions.md, 2026-07-22):
+ * an entry is editable until a newer event lands at the same pin — the
+ * location's own history is the clock, so a battle across the map never
+ * closes your words here. Ties (equal createdAt) leave the entry open.
+ * A sealed pin closes everything at it, latest event included.
  */
 export function canEditTestimony(data: CampaignData, t: Testimony): boolean {
-  return !data.events.some((e) => e.session > t.session);
+  const event = data.events.find((e) => e.id === t.eventId);
+  if (!event) return false;
+  const pin = data.pins.find((p) => p.id === event.pinId);
+  if (pin?.sealed) return false;
+  return !data.events.some((e) => e.pinId === event.pinId && e.createdAt > event.createdAt);
 }
 
 // --- membership layer (owner acts; the proposal pattern resolves) ---
@@ -140,7 +147,7 @@ export function addEvent(
   const event: SiteEvent = {
     id: newId('e'),
     pinId,
-    session: data.campaign.currentSession,
+    createdAt: Date.now(),
     canonLine: line,
     ...(air ? { atmosphere: air } : {}),
     // open to the whole table by default: an empty list is resolved live, so a
@@ -183,9 +190,8 @@ export function setPinHidden(data: CampaignData, pinId: string, hidden: boolean)
 
 /**
  * Reveal a staged pin: the reveal is itself a timeline event
- * (docs/decisions.md, fog) — the pin joins the table's map at the current
- * session, stamped so the scrubber replays its arrival, and the canon line
- * says what the table now knows.
+ * (docs/decisions.md, fog) — the pin joins the table's map, and the reveal
+ * event's own timestamp is the record of when the table learned of it.
  */
 export function revealPin(data: CampaignData, pinId: string, canonLine: string, atmosphere?: string): { pin: Pin; event: SiteEvent } {
   const pin = data.pins.find((p) => p.id === pinId);
@@ -193,41 +199,80 @@ export function revealPin(data: CampaignData, pinId: string, canonLine: string, 
   if (!pin.hidden) throw new Error('this place is not staged');
   const event = addEvent(data, pinId, canonLine, undefined, atmosphere);
   delete pin.hidden;
-  pin.hiddenUntilSession = data.campaign.currentSession;
   return { pin, event };
 }
 
-export function advanceSession(data: CampaignData): number {
-  data.campaign.currentSession += 1;
-  return data.campaign.currentSession;
+/** Reposition a misplaced pin — the place was always there; the pin was wrong. */
+export function movePin(data: CampaignData, pinId: string, x: number, y: number): Pin {
+  const pin = data.pins.find((p) => p.id === pinId);
+  if (!pin) throw new Error('no such pin');
+  if (!(x >= 0 && x <= 1 && y >= 0 && y <= 1)) throw new Error('a pin lives on the map: coordinates are normalized [0,1]');
+  pin.x = x;
+  pin.y = y;
+  return pin;
+}
+
+/** Set (or clear, with '') the standing description of a place. */
+export function describePin(data: CampaignData, pinId: string, description: string): Pin {
+  const pin = data.pins.find((p) => p.id === pinId);
+  if (!pin) throw new Error('no such pin');
+  const prose = description.trim();
+  if (prose.length > MAX_PIN_DESCRIPTION_CHARS) {
+    throw new Error(`a description is the character of the place, not its chronicle: ${MAX_PIN_DESCRIPTION_CHARS} characters at most`);
+  }
+  if (prose) pin.description = prose;
+  else delete pin.description;
+  return pin;
+}
+
+export function renamePin(data: CampaignData, pinId: string, name: string): Pin {
+  const pin = data.pins.find((p) => p.id === pinId);
+  if (!pin) throw new Error('no such pin');
+  const trimmed = name.trim();
+  if (!trimmed) throw new Error('a place needs a name');
+  pin.name = trimmed;
+  return pin;
+}
+
+/**
+ * Seal or unseal a place. Sealed closes it to player input — no new
+ * testimony, no marks — while the owner keeps every power, events included.
+ * Existing words stay readable: the seal closes the door, never the record.
+ */
+export function setPinSealed(data: CampaignData, pinId: string, sealed: boolean): Pin {
+  const pin = data.pins.find((p) => p.id === pinId);
+  if (!pin) throw new Error('no such pin');
+  if (sealed) pin.sealed = true;
+  else delete pin.sealed;
+  return pin;
 }
 
 // --- testimony layer (player acts) ---
 
 /**
- * Write or amend a slot. The entry is stamped with the session it was
- * written in (not the event's session) — a slot filled late shows up
- * late in the scrub, which is honest, and the stamp is what the grace
- * window closes against.
+ * Write or amend a slot. The entry is stamped with the moment it was first
+ * written (not the event's) — a slot filled late is honest about being late,
+ * and the stamp is never touched on amend. A sealed pin refuses both paths.
  */
 export function writeTestimony(data: CampaignData, eventId: string, memberId: string, text: string): Testimony {
   const body = text.trim();
   if (!body) throw new Error('testimony needs words');
   if (body.length > MAX_TESTIMONY_CHARS) throw new Error(`testimony is an account, not a chronicle: ${MAX_TESTIMONY_CHARS} characters at most`);
+  const event = data.events.find((e) => e.id === eventId);
+  if (!event) throw new Error('no such event');
+  if (data.pins.find((p) => p.id === event.pinId)?.sealed) throw new Error('sealed: the Campaign Manager has closed this place');
   const existing = data.testimony.find((t) => t.eventId === eventId && t.memberId === memberId);
   if (existing) {
     if (!canEditTestimony(data, existing)) throw new Error('testimony is closed: the table has moved on');
     existing.text = body;
     return existing;
   }
-  const event = data.events.find((e) => e.id === eventId);
-  if (!event) throw new Error('no such event');
   if (!eventParticipants(data, event).includes(memberId)) throw new Error('not a participant in this event');
   const entry: Testimony = {
     id: newId('t'),
     eventId,
     memberId,
-    session: data.campaign.currentSession,
+    createdAt: Date.now(),
     text: body,
   };
   data.testimony.push(entry);
@@ -257,7 +302,7 @@ export function postBounty(data: CampaignData, memberId: string, target: string,
     postedBy: memberId,
     target: quarry,
     reason: words,
-    session: data.campaign.currentSession,
+    postedAt: Date.now(),
     status: 'proposed',
   };
   data.bounties.push(bounty);
@@ -283,16 +328,16 @@ export function declineBounty(data: CampaignData, bountyId: string): Bounty {
 }
 
 /**
- * The owner strikes a posted bounty settled — crossed out at the current
- * session, never erased. How it was settled is testimony's business; the
- * board only remembers that it was.
+ * The owner strikes a posted bounty settled — crossed out, never erased.
+ * How it was settled is testimony's business; the board only remembers
+ * that it was.
  */
 export function strikeBounty(data: CampaignData, bountyId: string): Bounty {
   const bounty = data.bounties.find((b) => b.id === bountyId);
   if (!bounty) throw new Error('no such bounty');
   if (bounty.status !== 'posted') throw new Error('only a posted bounty can be struck');
   bounty.status = 'struck';
-  bounty.struckSession = data.campaign.currentSession;
+  bounty.struckAt = Date.now();
   return bounty;
 }
 
@@ -301,6 +346,8 @@ export function promoteMark(data: CampaignData, testimonyId: string, memberId: s
   const t = data.testimony.find((x) => x.id === testimonyId);
   if (!t) throw new Error('no such testimony');
   if (t.memberId !== memberId) throw new Error('only the author can leave a mark');
+  const event = data.events.find((e) => e.id === t.eventId);
+  if (event && data.pins.find((p) => p.id === event.pinId)?.sealed) throw new Error('sealed: the Campaign Manager has closed this place');
   if (t.markText) throw new Error('a mark is already scrawled from this entry');
   const line = text.trim();
   if (!line) throw new Error('a mark needs words');

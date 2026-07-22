@@ -1,20 +1,20 @@
 // The staging layer, pinned from docs/decisions.md (fog): staged pins and
 // their prepped events simply don't exist for players — not on the map, not
 // in the payload — and the only door out of staging once history exists is
-// a reveal, which is itself a timeline event the scrubber replays.
+// a reveal, which is itself a timeline event.
 
 import { describe, expect, it } from 'vitest';
 import { revealPin, setPinHidden, visibleData } from '../src/mutations';
 import { ghostPins, stagedPins, visiblePins } from '../src/derive';
-import { seed } from '../src/data/seed';
+import { HOUR, night, seed } from '../src/data/seed';
 import type { CampaignData } from '../src/model';
 
 /** Seed plus one staged pin with one prepped event (and testimony on it). */
 function withStaged(): CampaignData {
   const data = structuredClone(seed);
   data.pins.push({ id: 'ps', campaignId: 'c1', x: 0.5, y: 0.5, name: 'The Sunken Vault', hidden: true });
-  data.events.push({ id: 'es', pinId: 'ps', session: 4, canonLine: 'Prepped in secret.', participantIds: ['m1'] });
-  data.testimony.push({ id: 'ts', eventId: 'es', memberId: 'm1', session: 4, text: 'Notes to myself.' });
+  data.events.push({ id: 'es', pinId: 'ps', createdAt: night(4), canonLine: 'Prepped in secret.', participantIds: ['m1'] });
+  data.testimony.push({ id: 'ts', eventId: 'es', memberId: 'm1', createdAt: night(4) + HOUR, text: 'Notes to myself.' });
   return data;
 }
 
@@ -39,21 +39,21 @@ describe('setPinHidden', () => {
 });
 
 describe('revealPin', () => {
-  it('unhides, stamps the scrubber record, and lands the reveal as an event', () => {
+  it('unhides and lands the reveal as an event — the event is the record', () => {
     const data = withStaged();
+    const before = Date.now();
     const { pin, event } = revealPin(data, 'ps', 'The vault doors stand open.');
     expect(pin.hidden).toBeUndefined();
-    expect(pin.hiddenUntilSession).toBe(4);
-    expect(event.session).toBe(4);
+    expect(event.createdAt).toBeGreaterThanOrEqual(before);
     expect(event.canonLine).toBe('The vault doors stand open.');
     expect(data.events).toContain(event);
   });
 
-  it('replays under the scrubber: absent before the reveal session, present from it', () => {
+  it('the pin joins the table\'s map only through the reveal', () => {
     const data = withStaged();
+    expect(visiblePins(data).map((p) => p.id)).not.toContain('ps');
     revealPin(data, 'ps', 'The vault doors stand open.');
-    expect(visiblePins(data, 3).map((p) => p.id)).not.toContain('ps');
-    expect(visiblePins(data, 4).map((p) => p.id)).toContain('ps');
+    expect(visiblePins(data).map((p) => p.id)).toContain('ps');
   });
 
   it('refuses a pin that is not staged, and an empty canon line leaves staging intact', () => {
@@ -80,7 +80,7 @@ describe('visibleData strips the staged layer', () => {
   });
 
   it('strips ghost pins too — a named, event-less place is owner-only scaffolding', () => {
-    // seed's p3 (the White Tower) is revealed but has no events: a ghost
+    // seed's p3 (the White Tower) has no events: a ghost
     const data = structuredClone(seed);
     expect(visibleData(data, 'm2').pins.map((p) => p.id)).not.toContain('p3');
     expect(visibleData(data, 'm1').pins.map((p) => p.id)).toContain('p3');
@@ -92,23 +92,19 @@ describe('visibleData strips the staged layer', () => {
 describe('map layers keep staged pins out of the ordinary world', () => {
   it('staged pins are neither visible nor ghosts, even with prepped events', () => {
     const data = withStaged();
-    expect(visiblePins(data, 4).map((p) => p.id)).not.toContain('ps');
-    expect(ghostPins(data, 4).map((p) => p.id)).not.toContain('ps');
+    expect(visiblePins(data).map((p) => p.id)).not.toContain('ps');
+    expect(ghostPins(data).map((p) => p.id)).not.toContain('ps');
     expect(stagedPins(data).map((p) => p.id)).toEqual(['ps']);
   });
 });
 
 describe('a prepped event surfaces as backstory after the reveal', () => {
-  it('the prep session is visible history once the pin is revealed', () => {
+  it('the place arrives carrying its prepped past, ordered before the reveal', () => {
     const data = withStaged();
-    // prep happened at session 4; the table advances, reveal lands at 5
-    data.campaign.currentSession = 5;
-    revealPin(data, 'ps', 'The vault doors stand open.');
-    // before the reveal session the pin never existed…
-    expect(visiblePins(data, 4).map((p) => p.id)).not.toContain('ps');
-    // …from it, the place arrives carrying its prepped past
-    expect(visiblePins(data, 5).map((p) => p.id)).toContain('ps');
-    const eventsAt5 = data.events.filter((e) => e.pinId === 'ps');
-    expect(eventsAt5.map((e) => e.session).sort()).toEqual([4, 5]);
+    const { event } = revealPin(data, 'ps', 'The vault doors stand open.');
+    const history = data.events
+      .filter((e) => e.pinId === 'ps')
+      .sort((a, b) => a.createdAt - b.createdAt || a.id.localeCompare(b.id));
+    expect(history.map((e) => e.id)).toEqual(['es', event.id]);
   });
 });

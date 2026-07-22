@@ -1,9 +1,8 @@
 // Live e2e smoke against a running `npm run api` (wrangler pages dev on
 // :8788, local D1 simulation). The whole loop: found → join → pending strip
 // on the wire → approve → pin → event → testimony → amend → mark → bounty
-// swear/nail/strike → stage/reveal → rotate → advance → reclaim → decline
-// cascade. This is the proof the API contract survived the KV→D1 migration:
-// every check below describes the wire as the KV era served it.
+// swear/nail/strike → stage/reveal → move/rename/describe → seal/unseal →
+// rotate → reclaim → decline cascade.
 //
 // Usage: node scripts/smoke-api.mjs [base-url]   (default http://127.0.0.1:8788)
 
@@ -50,7 +49,7 @@ check('create campaign → 201', createdRes.status === 201, `${createdRes.status
 const created = await json(createdRes);
 const cid = created.campaign.id;
 const owner = { token: created.token, id: created.member.id };
-check('campaign shape', created.campaign.mapImageUrl === `/api/maps/${cid}` && created.campaign.currentSession === 1);
+check('campaign shape', created.campaign.mapImageUrl === `/api/maps/${cid}` && created.campaign.currentSession === undefined);
 check('owner seat active', created.member.role === 'owner' && created.member.status === 'active');
 
 // --- tokenless GET refused --------------------------------------------------
@@ -113,7 +112,8 @@ check('proposed bounty off rival wire', !rivalView3.bounties.some((b) => b.id ==
 const nailed = await json(await api(`/api/campaigns/${cid}/bounties/${bounty.id}`, { token: owner.token, body: { action: 'approve' } }));
 check('bounty nailed up', nailed.status === 'posted');
 const struck = await json(await api(`/api/campaigns/${cid}/bounties/${bounty.id}`, { token: owner.token, body: { action: 'strike' } }));
-check('bounty struck settled', struck.status === 'struck' && struck.struckSession === 1);
+check('bounty struck settled', struck.status === 'struck' && typeof struck.struckAt === 'number');
+check('bounty carries postedAt', typeof struck.postedAt === 'number' && struck.postedAt <= struck.struckAt);
 const b2 = await json(await api(`/api/campaigns/${cid}/bounties`, { token: rival.token, body: { target: 'Corvyn', reason: 'The rope.' } }));
 const declinedB = await api(`/api/campaigns/${cid}/bounties/${b2.id}`, { token: owner.token, body: { action: 'decline' } });
 check('bounty declined (deleted)', declinedB.status === 200);
@@ -127,23 +127,45 @@ check('pin staged', hidden.hidden === true);
 const playerView = await json(await api(`/api/campaigns/${cid}`, { token: player.token }));
 check('staged pin off player wire', !playerView.pins.some((p) => p.id === secret.id));
 const revealed = await json(await api(`/api/campaigns/${cid}/pins/${secret.id}`, { token: owner.token, body: { action: 'reveal', canonLine: 'A cellar door stood open.' } }));
-check('reveal stamps session + event', revealed.pin.hiddenUntilSession === 1 && revealed.event.canonLine.includes('cellar'));
+check('reveal lands the event, no session stamp', revealed.pin.hiddenUntilSession === undefined && revealed.pin.hidden === undefined && revealed.event.canonLine.includes('cellar') && typeof revealed.event.createdAt === 'number');
 const playerView2 = await json(await api(`/api/campaigns/${cid}`, { token: player.token }));
 check('revealed pin reaches player', playerView2.pins.some((p) => p.id === secret.id));
 
-// --- rotate + advance --------------------------------------------------------
+// --- the Campaign Manager's pin controls ------------------------------------
+const moved = await json(await api(`/api/campaigns/${cid}/pins/${pin.id}`, { token: owner.token, body: { action: 'move', x: 0.25, y: 0.75 } }));
+check('pin moved', moved.x === 0.25 && moved.y === 0.75);
+check('move off the map → 400', (await api(`/api/campaigns/${cid}/pins/${pin.id}`, { token: owner.token, body: { action: 'move', x: 1.5, y: 0.5 } })).status === 400);
+check('player cannot move → 403', (await api(`/api/campaigns/${cid}/pins/${pin.id}`, { token: player.token, body: { action: 'move', x: 0.4, y: 0.4 } })).status === 403);
+
+const renamed = await json(await api(`/api/campaigns/${cid}/pins/${pin.id}`, { token: owner.token, body: { action: 'rename', name: 'The Tollgate, Rebuilt' } }));
+check('pin renamed', renamed.name === 'The Tollgate, Rebuilt');
+
+const described = await json(await api(`/api/campaigns/${cid}/pins/${pin.id}`, { token: owner.token, body: { action: 'describe', description: 'A gate that has fallen once already.' } }));
+check('description round-trips', described.description === 'A gate that has fallen once already.');
+check('over-cap description → 400', (await api(`/api/campaigns/${cid}/pins/${pin.id}`, { token: owner.token, body: { action: 'describe', description: 'x'.repeat(1201) } })).status === 400);
+const cleared = await json(await api(`/api/campaigns/${cid}/pins/${pin.id}`, { token: owner.token, body: { action: 'describe', description: '' } }));
+check('empty description clears the field', cleared.description === undefined);
+
+// --- seal: the place closes to player input ---------------------------------
+const pinSealed = await json(await api(`/api/campaigns/${cid}/pins/${pin.id}`, { token: owner.token, body: { action: 'seal' } }));
+check('pin sealed', pinSealed.sealed === true);
+const refusedWrite = await api(`/api/campaigns/${cid}/testimony`, { token: player.token, body: { eventId: ev.id, text: 'Changing my story.' } });
+check('sealed place refuses testimony → 409', refusedWrite.status === 409);
+const evAtSealed = await api(`/api/campaigns/${cid}/events`, { token: owner.token, body: { pinId: pin.id, canonLine: 'The owner still writes canon here.' } });
+check('owner events land at a sealed place', evAtSealed.status === 201);
+const unsealedPin = await json(await api(`/api/campaigns/${cid}/pins/${pin.id}`, { token: owner.token, body: { action: 'unseal' } }));
+check('pin unsealed (absent-when-false)', unsealedPin.sealed === undefined);
+
+// --- per-place grace window: a newer event here closes the older entry ------
+const lateAmend = await api(`/api/campaigns/${cid}/testimony`, { token: player.token, body: { eventId: ev.id, text: 'Revising history.' } });
+check('closed testimony → 409 (newer event at this place)', lateAmend.status === 409);
+
+// --- rotate ------------------------------------------------------------------
 const oldCode = created.campaign.joinCode;
 const rotated = await json(await api(`/api/campaigns/${cid}/code`, { token: owner.token, body: {} }));
 check('code rotated', rotated.joinCode && rotated.joinCode !== oldCode);
 check('old code dead → 404', (await api('/api/join', { body: { code: oldCode, name: 'Latecomer' } })).status === 404);
 check('new code lives', (await api('/api/join', { body: { code: rotated.joinCode, name: 'Latecomer' } })).status === 201);
-
-const adv = await json(await api(`/api/campaigns/${cid}/session`, { token: owner.token, body: {} }));
-check('session advanced', adv.currentSession === 2);
-// grace window still open (no event in s2 yet) — then latch it shut
-await api(`/api/campaigns/${cid}/events`, { token: owner.token, body: { pinId: pin.id, canonLine: 'Morning after.' } });
-const sealed = await api(`/api/campaigns/${cid}/testimony`, { token: player.token, body: { eventId: ev.id, text: 'Changing my story.' } });
-check('sealed testimony → 409', sealed.status === 409);
 
 // --- reclaim (self-serve) ----------------------------------------------------
 const reclaim = await json(await api(`/api/campaigns/${cid}/members/${player.id}`, { token: player.token, body: { action: 'reclaim' } }));

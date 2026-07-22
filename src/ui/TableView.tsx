@@ -4,11 +4,11 @@
 // furniture. The panel has one mode at a time: overview (default), a pin,
 // bounties, the campaign/seat panel, or help.
 
-import { effect } from '@preact/signals';
-import { useEffect, useRef, useState } from 'preact/hooks';
+import { useEffect, useState } from 'preact/hooks';
 import type { ApiStore } from '../store';
 import { BountyBoard } from './BountyBoard';
-import { confirmDialog, oops, textDialog } from './dialogs';
+import { oops, textDialog } from './dialogs';
+import { fmtDay } from './format';
 import { IdentityPanel } from './IdentityPanel';
 import { MapCanvas } from './MapCanvas';
 import { PinPanel } from './PinPanel';
@@ -17,6 +17,9 @@ import { PinPanel } from './PinPanel';
 const PIN_POLL_MS = 5000;
 
 type PanelMode = 'overview' | 'pin' | 'bounties' | 'identity' | 'help';
+
+/** An armed map tap: the next tap on open ground places or moves a pin. */
+type Arming = { kind: 'place' } | { kind: 'move'; pinId: string } | null;
 
 export interface TableViewProps {
   store: ApiStore;
@@ -34,20 +37,21 @@ function HelpPanel({ isOwner }: { isOwner: boolean }) {
           <li><b>You own the world.</b> Press <b>＋ Add pin</b>, then tap the map to name a place.</li>
           <li>Open a place and <b>Add event</b>: one line of canon (the headline), plus optional atmosphere prose. Events are what players write their accounts of.</li>
           <li><b>Hide pin</b> preps a place only you can see; <b>Reveal to table</b> brings it to everyone as a timeline event.</li>
-          <li><b>Start session</b> advances the campaign clock. Accounts of past sessions lock once the new session's first event lands.</li>
+          <li>A place is yours to keep true: <b>move</b> a misplaced pin, <b>rename</b> it, and give it a <b>description</b> that changes as events change it.</li>
+          <li><b>Seal</b> a place when it closes off — players can read everything, but no new accounts or graffiti land there until you unseal it.</li>
+          <li>A player's account locks when the next event lands at that same place — each place keeps its own clock.</li>
           <li>Share the <b>join code</b> freely — joiners write immediately, but their words reach the table only after you approve them.</li>
           <li>The <b>bounty board</b> collects players' sworn revenge — you post proposals to the board, and mark them settled.</li>
-          <li>Once history spans sessions, the <b>session pill</b> scrubs the map back through time.</li>
         </ul>
       ) : (
         <ul>
           <li><b>Tap a pin</b> to read a place's history — the Campaign Manager's canon first, then every seat's account.</li>
           <li><b>Write your account</b> in your own words: what happened, as you saw it. It's yours alone; contradiction is welcome.</li>
-          <li>You can <b>edit</b> your account until the next session begins — then it locks for good.</li>
+          <li>You can <b>edit</b> your account until the next event lands at that place — then it locks for good.</li>
           <li><b>Highlight a line as graffiti</b>: one short line from your account, left on the place, unattributed at a glance.</li>
           <li>Hollow pips on a pin are <b>voices still missing</b> from its latest events.</li>
+          <li>A <b>sealed</b> place is closed off — you can read everything, but nothing new lands there.</li>
           <li>Killed? Wronged? <b>Post a bounty</b> — the Campaign Manager puts it on the board for the table to read.</li>
-          <li>Once history spans sessions, the <b>session pill</b> scrubs the map back through time.</li>
         </ul>
       )}
     </div>
@@ -58,14 +62,14 @@ function Overview({ store, isOwner, onOpenPin }: { store: ApiStore; isOwner: boo
   const data = store.data;
   const pending = data.members.filter((m) => m.status === 'pending');
   const recent = [...data.events]
-    .sort((a, z) => z.session - a.session)
+    .sort((a, z) => z.createdAt - a.createdAt)
     .slice(0, 6)
     .map((e) => ({ event: e, pin: data.pins.find((p) => p.id === e.pinId) }))
     .filter((r) => r.pin && !r.pin.hidden);
   return (
     <div class="overview">
       <h2>{data.campaign.name}</h2>
-      <p class="card-hint">Session {data.campaign.currentSession} · select a place on the map to read or write</p>
+      <p class="card-hint">select a place on the map to read or write</p>
       {isOwner && pending.length > 0 && (
         <section class="panel-section attention-section">
           <h3>Waiting to join</h3>
@@ -84,7 +88,7 @@ function Overview({ store, isOwner, onOpenPin }: { store: ApiStore; isOwner: boo
           <h3>Recent events</h3>
           {recent.map(({ event, pin }) => (
             <button class="recent-row" key={event.id} onClick={() => onOpenPin(pin!.id)}>
-              <span class="recent-session">s{event.session}</span>
+              <span class="recent-session">{fmtDay(event.createdAt)}</span>
               <span class="recent-place">{pin!.name}</span>
               <span class="recent-canon">{event.canonLine}</span>
             </button>
@@ -99,29 +103,12 @@ function Overview({ store, isOwner, onOpenPin }: { store: ApiStore; isOwner: boo
 export function TableView({ store, googleOn, onSwitchCampaign, onLeave }: TableViewProps) {
   // reading store.data in render subscribes this component to the signal
   const data = store.data;
-  const present = data.campaign.currentSession;
   const isOwner = store.me?.role === 'owner';
 
-  const [viewed, setViewed] = useState(present);
   const [panel, setPanel] = useState<PanelMode>('overview');
   const [selectedPinId, setSelectedPinId] = useState<string | null>(null);
-  const [placing, setPlacing] = useState(false);
+  const [arming, setArming] = useState<Arming>(null);
   const [sheetFull, setSheetFull] = useState(false);
-  const [scrubberOpen, setScrubberOpen] = useState(false);
-
-  // the view follows the table's clock only when standing at it: a remote
-  // advance carries a present-viewer forward, never yanks a reader out of
-  // the past mid-scrub
-  const knownPresent = useRef(present);
-  useEffect(
-    () =>
-      effect(() => {
-        const now = store.$data.value.campaign.currentSession;
-        setViewed((v) => (v >= knownPresent.current ? now : v));
-        knownPresent.current = now;
-      }),
-    [store],
-  );
 
   // freshness discipline: refetch on focus/visibility, short-poll while a pin
   // panel is open and the tab visible; refresh is quiet when nothing changed
@@ -146,12 +133,10 @@ export function TableView({ store, googleOn, onSwitchCampaign, onLeave }: TableV
     };
   }, [store, panel, selectedPinId]);
 
-  const past = viewed < present;
-  const canPlace = isOwner && !past;
-  const hasHistory = present > 1;
   const postedBounties = data.bounties.filter((b) => b.status === 'posted').length;
   const proposedBounties = data.bounties.filter((b) => b.status === 'proposed').length;
   const waiting = isOwner ? data.members.filter((m) => m.status === 'pending').length : 0;
+  const movingPin = arming?.kind === 'move' ? data.pins.find((p) => p.id === arming.pinId) : undefined;
 
   const openPin = (id: string | null): void => {
     setSelectedPinId(id);
@@ -163,27 +148,24 @@ export function TableView({ store, googleOn, onSwitchCampaign, onLeave }: TableV
     }
   };
 
+  /** An armed tap landed on open ground: place a new pin, or move one. */
   const place = async (x: number, y: number): Promise<void> => {
-    setPlacing(false);
+    const act = arming;
+    setArming(null);
+    if (act?.kind === 'move') {
+      try {
+        await store.movePin(act.pinId, x, y);
+        openPin(act.pinId);
+      } catch (e) {
+        oops(e);
+      }
+      return;
+    }
     const name = await textDialog('Name this place', { title: 'New pin', placeholder: 'e.g. The Broken Tower', confirmLabel: 'Add pin' });
     if (!name?.trim()) return;
     try {
       const pin = await store.addPin(x, y, name.trim());
       openPin(pin.id);
-    } catch (e) {
-      oops(e);
-    }
-  };
-
-  const startSession = async (): Promise<void> => {
-    const sure = await confirmDialog(
-      `Start session ${present + 1}? Session ${present}'s open accounts lock once the first event lands in the new one — and the clock doesn't turn back.`,
-      { confirmLabel: `Start session ${present + 1}` },
-    );
-    if (!sure) return;
-    try {
-      const s = await store.advanceSession();
-      setViewed(s);
     } catch (e) {
       oops(e);
     }
@@ -220,65 +202,26 @@ export function TableView({ store, googleOn, onSwitchCampaign, onLeave }: TableV
 
       <MapCanvas
         data={data}
-        session={viewed}
         selectedPinId={selectedPinId}
         withGhosts={!!isOwner}
-        placing={placing && canPlace}
-        past={past}
+        placing={arming !== null && !!isOwner}
         onTapPin={openPin}
         onPlace={(x, y) => void place(x, y)}
       />
 
-      {canPlace && (
-        <button class={'place-btn' + (placing ? ' active' : '')} onClick={() => setPlacing((p) => !p)}>
-          {placing ? '✕ Cancel' : '＋ Add pin'}
+      {isOwner && (
+        <button class={'place-btn' + (arming ? ' active' : '')} onClick={() => setArming((a) => (a ? null : { kind: 'place' }))}>
+          {arming ? '✕ Cancel' : '＋ Add pin'}
         </button>
       )}
-      {placing && canPlace && (
+      {arming && isOwner && (
         <div class="placebar">
           <span class="placebar-dot" />
-          <span>Tap the map where it happened</span>
-          <button class="quiet" onClick={() => setPlacing(false)}>Cancel</button>
+          <span>{movingPin ? `Tap the map to move “${movingPin.name}”` : 'Tap the map where it happened'}</span>
+          <button class="quiet" onClick={() => setArming(null)}>Cancel</button>
         </div>
       )}
-      {isOwner && data.pins.length === 0 && !placing && <div class="map-hint">name your first place — press ＋ Add pin, then tap the map</div>}
-
-      {past && (
-        <div class="pastbar">
-          <span>the map as it stood after session {viewed}</span>
-          <button class="quiet" onClick={() => setViewed(present)}>
-            Back to now
-          </button>
-        </div>
-      )}
-
-      {(hasHistory || isOwner) && (
-        <footer class={'scrubber' + (scrubberOpen ? '' : ' collapsed') + (past ? ' past' : '')}>
-          {hasHistory && (
-            <button class="scrubber-pill quiet" onClick={() => setScrubberOpen((o) => !o)}>
-              {scrubberOpen ? 'Close' : past ? `⟲ Session ${viewed} of ${present}` : `⟲ Session ${present}`}
-            </button>
-          )}
-          {scrubberOpen && hasHistory && (
-            <>
-              <span class="scrubber-label">{past ? `Session ${viewed} of ${present}` : `Session ${viewed}`}</span>
-              <input
-                type="range"
-                min={1}
-                max={present}
-                step={1}
-                value={viewed}
-                onInput={(ev) => setViewed(Number((ev.currentTarget as HTMLInputElement).value))}
-              />
-            </>
-          )}
-          {isOwner && (
-            <button class="quiet" onClick={() => void startSession()}>
-              Start session {present + 1}
-            </button>
-          )}
-        </footer>
-      )}
+      {isOwner && data.pins.length === 0 && !arming && <div class="map-hint">name your first place — press ＋ Add pin, then tap the map</div>}
 
       <aside class="side-panel">
         {sheetOpen && (
@@ -293,7 +236,16 @@ export function TableView({ store, googleOn, onSwitchCampaign, onLeave }: TableV
         )}
         <div class="panel-body">
           {panel === 'pin' && selectedPinId ? (
-            <PinPanel key={selectedPinId} store={store} pinId={selectedPinId} session={viewed} />
+            <PinPanel
+              key={selectedPinId}
+              store={store}
+              pinId={selectedPinId}
+              onStartMove={(pinId) => {
+                setArming({ kind: 'move', pinId });
+                setPanel('overview');
+                setSelectedPinId(null);
+              }}
+            />
           ) : panel === 'bounties' ? (
             <BountyBoard store={store} />
           ) : panel === 'identity' ? (

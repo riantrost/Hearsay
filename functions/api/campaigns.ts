@@ -35,7 +35,6 @@ export const onRequestPost: PagesFunction<Env> = async ({ request, env }) => {
     mapImageUrl: `/api/maps/${cid}`,
     mapW,
     mapH,
-    currentSession: 1,
     joinCode: newJoinCode(),
   };
   const owner: Member = {

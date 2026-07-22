@@ -169,7 +169,6 @@ button.linklike {
 }
 .map-host:active { cursor: grabbing; }
 .map-host.placing { cursor: crosshair; }
-.map-host.past svg image { filter: sepia(0.3) brightness(0.94) saturate(0.85); }
 svg.map { width: 100%; height: 100%; display: block; }
 
 /* pins (same grammar as v1: halo = lineage, jacks = missing voices) */
@@ -196,6 +195,7 @@ svg.map { width: 100%; height: 100%; display: block; }
   pointer-events: none;
 }
 .pin-scrawl { fill: var(--ink); font-size: 13px; pointer-events: none; }
+.pin-sealed { fill: var(--settled); font-size: 12px; text-anchor: middle; pointer-events: none; }
 .pin-label {
   fill: var(--parchment);
   paint-order: stroke;
@@ -272,46 +272,6 @@ svg.map { width: 100%; height: 100%; display: block; }
   max-width: 90vw;
   text-align: center;
 }
-.pastbar {
-  position: absolute;
-  top: calc(var(--topbar-h) + 10px);
-  left: 50%;
-  transform: translateX(-50%);
-  z-index: 20;
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  background: #e9dcc3;
-  color: #5d4d33;
-  border-radius: 16px;
-  padding: 7px 14px;
-  font-size: 14px;
-  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.25);
-  max-width: 94vw;
-}
-.pastbar .quiet { color: inherit; }
-
-/* scrubber: sleeps as a pill, expands to the slider */
-.scrubber {
-  position: absolute;
-  left: 12px;
-  bottom: 14px;
-  z-index: 20;
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  color: var(--parchment);
-}
-.scrubber:not(.collapsed) {
-  background: color-mix(in srgb, var(--slate) 90%, transparent);
-  border-radius: 20px;
-  padding: 8px 14px;
-}
-.scrubber .quiet, .scrubber-pill { color: var(--parchment); border-color: rgba(244, 237, 226, 0.35); }
-.scrubber input[type='range'] { width: min(300px, 50vw); accent-color: var(--ember); }
-.scrubber-label { font-size: 13px; white-space: nowrap; }
-.scrubber.past .scrubber-pill { border-color: var(--ember); color: #e9b18c; }
-
 /* --------------------------------------------------------------- the panel
    Mobile: a bottom sheet with two states (peek / full). Desktop: a fixed
    right column (overridden in the media query below). */
@@ -458,7 +418,28 @@ svg.map { width: 100%; height: 100%; display: block; }
 }
 .account-acts { display: flex; align-items: center; gap: 10px; }
 .grace-hint { font-size: 12px; color: var(--settled); }
-.sealed-caption { font-size: 12px; color: var(--settled); font-style: italic; }
+.closed-caption { font-size: 12px; color: var(--settled); font-style: italic; }
+.pin-desc { color: var(--slate-soft); font-style: italic; font-size: 14px; margin: 4px 0 8px; }
+.sealed-notice {
+  background: var(--parchment-warm);
+  border: 1px dashed var(--line);
+  border-radius: 6px;
+  padding: 8px 12px;
+  font-size: 13px;
+  color: var(--settled);
+  margin: 6px 0;
+}
+.pin-tools { display: flex; flex-wrap: wrap; gap: 6px; margin: 6px 0 10px; }
+.desc-editor { display: flex; flex-direction: column; gap: 8px; margin: 6px 0; }
+.desc-editor textarea {
+  width: 100%;
+  min-height: 74px;
+  padding: 8px 10px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: white;
+  resize: vertical;
+}
 .mark-caption { font-size: 13px; color: var(--slate-soft); }
 .mark-open { font-size: 13px; align-self: flex-start; }
 .mark-picker { display: flex; flex-direction: column; gap: 6px; align-items: flex-start; }
@@ -592,7 +573,7 @@ svg.map { width: 100%; height: 100%; display: block; }
 
   /* floating furniture centers over the map cell, not the whole window */
   .place-btn { bottom: 20px; }
-  .placebar, .map-hint, .pastbar {
+  .placebar, .map-hint {
     left: calc((100% - var(--panel-w)) / 2);
     max-width: 50%;
   }

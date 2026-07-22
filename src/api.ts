@@ -91,9 +91,20 @@ export async function postEvent(
   return (await (await post(seat, '/events', { pinId, canonLine, atmosphere, participantIds })).json()) as SiteEvent;
 }
 
-export async function postSession(seat: Seat): Promise<number> {
-  const body = (await (await post(seat, '/session', {})).json()) as { currentSession: number };
-  return body.currentSession;
+export async function postPinMove(seat: Seat, pinId: string, x: number, y: number): Promise<Pin> {
+  return (await (await post(seat, `/pins/${encodeURIComponent(pinId)}`, { action: 'move', x, y })).json()) as Pin;
+}
+
+export async function postPinDescribe(seat: Seat, pinId: string, description: string): Promise<Pin> {
+  return (await (await post(seat, `/pins/${encodeURIComponent(pinId)}`, { action: 'describe', description })).json()) as Pin;
+}
+
+export async function postPinRename(seat: Seat, pinId: string, name: string): Promise<Pin> {
+  return (await (await post(seat, `/pins/${encodeURIComponent(pinId)}`, { action: 'rename', name })).json()) as Pin;
+}
+
+export async function postPinSealed(seat: Seat, pinId: string, sealed: boolean): Promise<Pin> {
+  return (await (await post(seat, `/pins/${encodeURIComponent(pinId)}`, { action: sealed ? 'seal' : 'unseal' })).json()) as Pin;
 }
 
 export async function postTestimony(seat: Seat, eventId: string, text: string): Promise<Testimony> {

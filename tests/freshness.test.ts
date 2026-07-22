@@ -48,11 +48,11 @@ describe('ApiStore.refresh', () => {
     let notifies = 0;
     store.subscribe(() => notifies++);
     const moved: CampaignData = structuredClone(seed);
-    moved.campaign.currentSession = 5;
+    moved.campaign.name = 'The Northmarch, Renamed';
     route = () => moved;
     await store.refresh();
     expect(notifies).toBe(1);
-    expect(store.data.campaign.currentSession).toBe(5);
+    expect(store.data.campaign.name).toBe('The Northmarch, Renamed');
   });
 
   it('discards a refresh that raced a local write — the snapshot predates it', async () => {
@@ -61,7 +61,7 @@ describe('ApiStore.refresh', () => {
     const gate = new Promise<void>((resolve) => (releaseGet = resolve));
     route = async (url, init) => {
       if (init?.method === 'POST' && url.endsWith('/testimony')) {
-        return { id: 'tX', eventId: 'e4', memberId: 'm1', session: 4, text: 'live words' };
+        return { id: 'tX', eventId: 'e4', memberId: 'm1', createdAt: Date.now(), text: 'live words' };
       }
       await gate; // hold the GET until after the write lands
       return structuredClone(seed); // a stale snapshot: tX is not in it
@@ -94,14 +94,16 @@ describe('ApiStore.refresh', () => {
   it('a later honest refresh is the truth — no ledger holds stale local state', async () => {
     const store = await ApiStore.boot(seat);
     route = (url, init) => {
-      if (init?.method === 'POST' && url.endsWith('/session')) return { currentSession: 9 };
+      if (init?.method === 'POST' && url.endsWith('/pins')) {
+        return { id: 'pX', campaignId: 'c1', x: 0.5, y: 0.5, name: 'New Place' };
+      }
       return structuredClone(seed); // the server's (consistent) answer
     };
-    await store.advanceSession();
-    expect(store.data.campaign.currentSession).toBe(9);
+    await store.addPin(0.5, 0.5, 'New Place');
+    expect(store.data.pins.some((p) => p.id === 'pX')).toBe(true);
     // a refresh that started *after* the write reads D1's own-write truth; here
     // the mock answers with the seed, and the store honestly takes it
     await store.refresh();
-    expect(store.data.campaign.currentSession).toBe(seed.campaign.currentSession);
+    expect(store.data.pins.some((p) => p.id === 'pX')).toBe(false);
   });
 });

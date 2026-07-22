@@ -112,11 +112,35 @@ export class ApiStore {
     return event;
   }
 
-  async advanceSession(): Promise<number> {
-    const currentSession = await api.postSession(this.seat);
-    this.$data.peek().campaign.currentSession = currentSession;
+  /** Reposition a misplaced pin (owner). */
+  async movePin(pinId: string, x: number, y: number): Promise<Pin> {
+    const pin = await api.postPinMove(this.seat, pinId, x, y);
+    ApiStore.upsert(this.$data.peek().pins, pin);
     this.notify();
-    return currentSession;
+    return pin;
+  }
+
+  /** Set or clear the standing description of a place (owner). */
+  async describePin(pinId: string, description: string): Promise<Pin> {
+    const pin = await api.postPinDescribe(this.seat, pinId, description);
+    ApiStore.upsert(this.$data.peek().pins, pin);
+    this.notify();
+    return pin;
+  }
+
+  async renamePin(pinId: string, name: string): Promise<Pin> {
+    const pin = await api.postPinRename(this.seat, pinId, name);
+    ApiStore.upsert(this.$data.peek().pins, pin);
+    this.notify();
+    return pin;
+  }
+
+  /** Seal or unseal a place against player input (owner). */
+  async setPinSealed(pinId: string, sealed: boolean): Promise<Pin> {
+    const pin = await api.postPinSealed(this.seat, pinId, sealed);
+    ApiStore.upsert(this.$data.peek().pins, pin);
+    this.notify();
+    return pin;
   }
 
   private upsertTestimony(entry: Testimony): void {

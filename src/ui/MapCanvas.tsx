@@ -1,4 +1,4 @@
-// The map: the campaign image plus its pins, filtered to the viewed session.
+// The map: the campaign image plus its pins.
 // Declarative now — Preact patches the pins that changed instead of
 // rebuilding the SVG, so the Viewport's transform on <g class="vp"> simply
 // persists across data updates (the old renderer re-applied it after every
@@ -12,23 +12,21 @@ import { Viewport } from '../map/viewport';
 
 export interface MapCanvasProps {
   data: CampaignData;
-  session: number;
   selectedPinId: string | null;
   /** Owner: also render event-less pins (ghosts) and the staged secret layer. */
   withGhosts: boolean;
-  /** Armed placement: the next map tap places a pin (owner, at the present). */
+  /** Armed placement: the next map tap places (or moves) a pin (owner). */
   placing: boolean;
-  past: boolean;
   onTapPin: (pinId: string | null) => void;
   /** A tap on open ground while armed, in normalized [0,1] map coords. */
   onPlace: (x: number, y: number) => void;
 }
 
-function PinGlyph({ data, pin, session, kind, selected }: { data: CampaignData; pin: Pin; session: number; kind: 'live' | 'ghost' | 'staged'; selected: boolean }) {
+function PinGlyph({ data, pin, kind, selected }: { data: CampaignData; pin: Pin; kind: 'live' | 'ghost' | 'staged'; selected: boolean }) {
   const { mapW, mapH } = data.campaign;
-  const events = data.events.filter((e) => e.pinId === pin.id && e.session <= session);
-  const marks = siteMarks(data, pin.id, session);
-  const pulse = kind === 'live' ? pinPulse(data, pin.id, session) : null;
+  const events = data.events.filter((e) => e.pinId === pin.id);
+  const marks = siteMarks(data, pin.id);
+  const pulse = kind === 'live' ? pinPulse(data, pin.id) : null;
   // pin geometry is authored at a 1600px reference map; scale with the image,
   // then counter-scale by --pin-k (viewport-driven, ~1/zoom) so pins hold a
   // legible screen size at any zoom instead of shrinking to specks
@@ -38,7 +36,7 @@ function PinGlyph({ data, pin, session, kind, selected }: { data: CampaignData; 
   const jackR = haloR + 5;
   return (
     <g
-      class={'pin' + (kind === 'staged' ? ' staged' : kind === 'ghost' ? ' ghost' : pulseClass(pulse!.age)) + (selected ? ' selected' : '')}
+      class={'pin' + (kind === 'staged' ? ' staged' : kind === 'ghost' ? ' ghost' : pulseClass(pulse!.gap)) + (selected ? ' selected' : '')}
       data-pin-id={pin.id}
       style={{
         transformBox: 'view-box',
@@ -62,6 +60,11 @@ function PinGlyph({ data, pin, session, kind, selected }: { data: CampaignData; 
           ✎
         </text>
       )}
+      {pin.sealed && (
+        <text class="pin-sealed" x={-13} y={-10}>
+          ⛓
+        </text>
+      )}
       <text class="pin-label" y={32}>
         {pin.name}
       </text>
@@ -74,7 +77,7 @@ function PinGlyph({ data, pin, session, kind, selected }: { data: CampaignData; 
   );
 }
 
-export function MapCanvas({ data, session, selectedPinId, withGhosts, placing, past, onTapPin, onPlace }: MapCanvasProps) {
+export function MapCanvas({ data, selectedPinId, withGhosts, placing, onTapPin, onPlace }: MapCanvasProps) {
   const hostRef = useRef<HTMLDivElement>(null);
   const viewportRef = useRef<Viewport | null>(null);
   // the tap handler closes over fresh props via a ref — the Viewport is
@@ -132,22 +135,22 @@ export function MapCanvas({ data, session, selectedPinId, withGhosts, placing, p
     viewportRef.current?.apply();
   });
 
-  const ghosts = withGhosts ? ghostPins(data, session) : [];
+  const ghosts = withGhosts ? ghostPins(data) : [];
   const staged = withGhosts ? stagedPins(data) : [];
 
   return (
-    <div class={'map-host' + (placing ? ' placing' : '') + (past ? ' past' : '')} ref={hostRef}>
+    <div class={'map-host' + (placing ? ' placing' : '')} ref={hostRef}>
       <svg class="map">
         <g class="vp">
           <image href={data.campaign.mapImageUrl} width={data.campaign.mapW} height={data.campaign.mapH} />
-          {visiblePins(data, session).map((p) => (
-            <PinGlyph key={p.id} data={data} pin={p} session={session} kind="live" selected={p.id === selectedPinId} />
+          {visiblePins(data).map((p) => (
+            <PinGlyph key={p.id} data={data} pin={p} kind="live" selected={p.id === selectedPinId} />
           ))}
           {ghosts.map((p) => (
-            <PinGlyph key={p.id} data={data} pin={p} session={session} kind="ghost" selected={p.id === selectedPinId} />
+            <PinGlyph key={p.id} data={data} pin={p} kind="ghost" selected={p.id === selectedPinId} />
           ))}
           {staged.map((p) => (
-            <PinGlyph key={p.id} data={data} pin={p} session={session} kind="staged" selected={p.id === selectedPinId} />
+            <PinGlyph key={p.id} data={data} pin={p} kind="staged" selected={p.id === selectedPinId} />
           ))}
         </g>
       </svg>

@@ -32,4 +32,4 @@ Keep the homes unmixed: `docs/decisions.md` is for **product/scope forks** (thes
 
 ## Principles (bind all future work)
 
-Plural memory is the artifact (testimony over recap) · canon/testimony split: authority by layer, never by moderation · identity-first, table-private · the map is the browse surface · sessions are the clock · every system must survive a low-energy month (carried from Litany).
+Plural memory is the artifact (testimony over recap) · canon/testimony split: authority by layer, never by moderation · identity-first, table-private · the map is the browse surface · each place is its own clock (supersedes "sessions are the clock", 2026-07-22) · every system must survive a low-energy month (carried from Litany).

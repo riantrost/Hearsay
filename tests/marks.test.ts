@@ -1,39 +1,33 @@
-// The scrubber's mark rule, pinned from docs/decisions.md ("Marks"): a mark
-// inherits its *event's* session stamp. Testimony may arrive late — late is
-// fine, forever — but graffiti belongs to when the thing happened, so the
-// replay surfaces it with its event, never with its writing date.
+// The mark rule, pinned from docs/decisions.md ("Marks"): a mark rides its
+// *event*. Testimony may arrive late — late is fine, forever — but graffiti
+// belongs to the thing that happened, so it surfaces with its event at its
+// site, never with its writing date.
 
 import { describe, expect, it } from 'vitest';
 import { siteMarks } from '../src/derive';
-import { seed } from '../src/data/seed';
+import { night, seed } from '../src/data/seed';
 
 describe('siteMarks', () => {
-  it('surfaces a mark from its event session onward', () => {
-    // t2's mark sits on e1 (session 1, at p2)
-    expect(siteMarks(seed, 'p2', 1).map((t) => t.id)).toEqual(['t2']);
-  });
-
-  it('holds a mark back while its event is beyond the viewed session', () => {
-    // t3's mark rides e2 (session 3): absent at 2, present at 3
-    expect(siteMarks(seed, 'p2', 2).map((t) => t.id)).toEqual(['t2']);
-    expect(siteMarks(seed, 'p2', 3).map((t) => t.id)).toEqual(['t2', 't3']);
+  it('surfaces every mark scrawled at a site with its event', () => {
+    // t2's mark sits on e1, t3's on e2 — both at the span
+    expect(siteMarks(seed, 'p2').map((t) => t.id)).toEqual(['t2', 't3']);
   });
 
   it('lets a late-written mark appear at its event, not its writing date', () => {
     const data = structuredClone(seed);
-    // a slot on e1 (session 1) filled three sessions later, mark and all
+    // a slot on e1 (first night) filled three nights later, mark and all
     data.testimony.push({
       id: 'tl',
       eventId: 'e1',
       memberId: 'm3',
-      session: 4,
+      createdAt: night(4),
       text: 'I finally wrote it down.',
       markText: 'It was never about the bridge.',
     });
-    expect(siteMarks(data, 'p2', 1).map((t) => t.id)).toContain('tl');
+    expect(siteMarks(data, 'p2').map((t) => t.id)).toContain('tl');
   });
 
   it('keeps marks at their own site', () => {
-    expect(siteMarks(seed, 'p1', 4)).toEqual([]);
+    expect(siteMarks(seed, 'p1')).toEqual([]);
   });
 });
