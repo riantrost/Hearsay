@@ -97,6 +97,7 @@ export function renderLanding(host: HTMLElement, handlers: LandingHandlers): voi
           <input name="joinName" placeholder="your name" required maxlength="60" />
           <button>take a seat</button>
         </form>
+        <p class="example-invite">just looking? <button type="button" class="example-btn">wander the example table</button></p>
       </section>
       <section class="landing-card google-card" hidden>
         <h2>Been here before?</h2>
@@ -175,7 +176,14 @@ export function renderLanding(host: HTMLElement, handlers: LandingHandlers): voi
     })().catch(fail);
   });
 
+  // The example table: a standing campaign anyone can wander into and read —
+  // four sessions of history exercising every mechanic, its content written to
+  // teach. The button only fills the code; taking a seat stays a deliberate act.
   const joinForm = host.querySelector<HTMLFormElement>('.join-form')!;
+  host.querySelector<HTMLButtonElement>('.example-btn')!.addEventListener('click', () => {
+    joinForm.querySelector<HTMLInputElement>('[name=code]')!.value = 'EXAMPLE';
+    joinForm.querySelector<HTMLInputElement>('[name=joinName]')!.focus();
+  });
   joinForm.addEventListener('submit', (ev) => {
     ev.preventDefault();
     errorEl.hidden = true;

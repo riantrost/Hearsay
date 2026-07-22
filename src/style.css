@@ -393,6 +393,24 @@ svg.map { width: 100%; height: 100%; display: block; }
   cursor: pointer;
 }
 .landing-card button:hover { background: #9a4526; }
+/* the example table's open door: an aside, not a call to action */
+.example-invite {
+  margin-top: 10px;
+  font-size: 13px;
+  font-style: italic;
+  color: #a39680;
+}
+.landing-card button.example-btn {
+  background: transparent;
+  border: none;
+  padding: 0;
+  font-size: 13px;
+  font-style: italic;
+  color: #3d5266;
+  text-decoration: underline;
+  cursor: pointer;
+}
+.landing-card button.example-btn:hover { background: transparent; color: #b8552f; }
 .landing-error {
   color: #e0a184;
   font-style: italic;
