@@ -321,6 +321,9 @@ export function PinPanel({ store, pinId, onStartMove }: PinPanelProps) {
         // the open event: nothing newer has landed here, and the place is not sealed
         const fresh = event.createdAt === latestAt && writable;
         const participants = eventParticipants(data, event);
+        const told = new Set(data.testimony.filter((t) => t.eventId === event.id).map((t) => t.memberId));
+        // absent voices collapse to one quiet line — a row per silence read as spam
+        const missing = participants.filter((id) => id !== viewerId && !told.has(id));
         return (
           <section class={'event' + (fresh ? ' fresh' : '')} key={event.id}>
             <h3>
@@ -348,13 +351,19 @@ export function PinPanel({ store, pinId, onStartMove }: PinPanelProps) {
                   </div>
                 );
               }
+              if (!entry) return null;
               return (
-                <div class={'testimony' + (entry ? '' : ' empty')} key={memberId}>
+                <div class="testimony" key={memberId}>
                   <span class="testimony-author">{member?.name ?? '?'}</span>
-                  <p>{entry ? entry.text : 'an open slot, quietly waiting'}</p>
+                  <p>{entry.text}</p>
                 </div>
               );
             })}
+            {missing.length > 0 && (
+              <p class="missing-voices">
+                voices still missing: {missing.map((id) => data.members.find((m) => m.id === id)?.name ?? '?').join(', ')}
+              </p>
+            )}
           </section>
         );
       })}

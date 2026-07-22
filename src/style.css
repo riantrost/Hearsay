@@ -404,8 +404,8 @@ svg.map { width: 100%; height: 100%; display: block; }
   border-left: 2px solid var(--line);
   font-size: 14px;
 }
-.testimony.empty p { color: var(--settled); font-style: italic; }
 .testimony-author { display: block; font-size: 12px; letter-spacing: 0.05em; color: var(--settled); margin-bottom: 2px; }
+.missing-voices { margin: 10px 0 0 12px; padding-left: 10px; font-size: 13px; color: var(--settled); font-style: italic; }
 .your-account { display: flex; flex-direction: column; gap: 8px; margin-top: 4px; }
 .your-account textarea {
   width: 100%;
@@ -503,6 +503,37 @@ svg.map { width: 100%; height: 100%; display: block; }
 /* help */
 .help-panel ul { padding-left: 18px; display: flex; flex-direction: column; gap: 9px; font-size: 14px; margin-top: 10px; }
 
+/* the example tour */
+.tour-intro { font-size: 14px; margin-top: 10px; }
+.tour-stops { list-style: none; padding: 0; margin-top: 14px; display: flex; flex-direction: column; gap: 8px; }
+.tour-stop {
+  width: 100%;
+  text-align: left;
+  background: var(--parchment-warm);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 10px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+.tour-stop:hover { border-color: rgba(43, 58, 71, 0.4); }
+.tour-stop-name { font-weight: bold; }
+.tour-stop-what { font-size: 13px; color: var(--settled); font-style: italic; }
+.tour-cta { margin-top: 22px; padding-top: 14px; border-top: 1px solid var(--line); display: flex; flex-direction: column; gap: 8px; align-items: flex-start; }
+.tour-note {
+  background: var(--parchment-warm);
+  border-left: 3px solid var(--slate-soft);
+  border-radius: 0 8px 8px 0;
+  padding: 10px 12px;
+  font-size: 13.5px;
+  margin: 10px 0 4px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.tour-note .linklike { align-self: flex-end; font-size: 13px; }
+
 /* dialogs */
 .dialog-veil {
   position: fixed;
@@ -563,6 +594,11 @@ svg.map { width: 100%; height: 100%; display: block; }
     grid-column: 2;
     grid-row: 2;
     height: auto;
+    /* a grid item refuses to shrink below its content unless told —
+       without this the panel silently outgrows its row and the event
+       list can never scroll */
+    min-height: 0;
+    overflow: hidden;
     border-radius: 0;
     border-left: 1px solid rgba(0, 0, 0, 0.25);
     box-shadow: none;

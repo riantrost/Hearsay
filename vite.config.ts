@@ -7,6 +7,8 @@ import { defineConfig } from 'vite';
 export default defineConfig({
   plugins: [preact()],
   server: {
+    // honor an assigned port (preview panes running beside another dev server)
+    port: Number(process.env.PORT) || 5173,
     proxy: { '/api': 'http://127.0.0.1:8788' },
   },
 });

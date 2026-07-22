@@ -19,12 +19,14 @@ import {
 } from '../seat';
 import { ApiStore } from '../store';
 import { Dialogs } from './dialogs';
+import { ExampleView } from './ExampleView';
 import { Landing } from './Landing';
 import { TableView } from './TableView';
 
 type Phase =
   | { at: 'loading' }
   | { at: 'door'; notice?: string }
+  | { at: 'example' }
   | { at: 'table'; store: ApiStore };
 
 export function App() {
@@ -120,11 +122,13 @@ export function App() {
         <Landing
           onSeated={onSeated}
           onResume={() => void boot()}
+          onExample={() => setPhase({ at: 'example' })}
           notice={phase.notice}
           google={googleOn}
           onGoogle={() => startGoogleFlow('recover')}
         />
       )}
+      {phase.at === 'example' && <ExampleView onBack={() => setPhase({ at: 'door' })} />}
       {phase.at === 'table' && (
         <TableView
           key={phase.store.seat.campaignId}

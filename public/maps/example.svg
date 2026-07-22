@@ -1,0 +1,282 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1600" height="1200" viewBox="0 0 1600 1200">
+  <!-- The example table's world: a salt coast, a river with a broken span,
+       grey fells in the northeast, and a low fen in the south. Drawn in the
+       app's own sepia so the map reads as an heirloom, not a screenshot. -->
+  <defs>
+    <filter id="grain" x="0" y="0" width="100%" height="100%">
+      <feTurbulence type="fractalNoise" baseFrequency="0.72" numOctaves="2" seed="7" result="n"/>
+      <feColorMatrix in="n" type="matrix" values="0 0 0 0 0.32  0 0 0 0 0.27  0 0 0 0 0.18  0 0 0 0.055 0"/>
+    </filter>
+    <radialGradient id="vignette" cx="50%" cy="46%" r="72%">
+      <stop offset="62%" stop-color="rgba(80,66,42,0)"/>
+      <stop offset="100%" stop-color="rgba(80,66,42,0.22)"/>
+    </radialGradient>
+
+    <!-- one mountain, shaded on its eastern face -->
+    <g id="peak">
+      <path d="M0 0 L16 -30 L32 0" fill="#f3ead7" stroke="#4d4536" stroke-width="2" stroke-linejoin="round"/>
+      <path d="M16 -30 L23 -13 L30 -2 L16 -2 Z" fill="rgba(77,69,54,0.22)" stroke="none"/>
+    </g>
+    <g id="hill">
+      <path d="M0 0 Q11 -14 22 0" fill="none" stroke="#4d4536" stroke-width="1.6" opacity="0.75"/>
+    </g>
+    <!-- a round-headed tree with a tick of trunk -->
+    <g id="tree">
+      <path d="M8 0 C2 0 -1 -6 3 -9 C1 -14 8 -18 11 -13 C17 -16 21 -9 16 -6 C19 -2 14 0 8 0 Z"
+            fill="#ede3cc" stroke="#4d4536" stroke-width="1.7" stroke-linejoin="round"/>
+      <path d="M9 0 L9 5" stroke="#4d4536" stroke-width="1.7"/>
+    </g>
+    <!-- marsh tuft: grass over standing water -->
+    <g id="tuft" stroke="#5c5443" stroke-width="1.5" opacity="0.8">
+      <path d="M0 0 H15"/>
+      <path d="M4 0 V-7 M8 0 V-10 M12 0 V-6"/>
+    </g>
+    <g id="wave">
+      <path d="M0 0 Q5 -4 10 0 Q15 4 20 0" fill="none" stroke="#a3947a" stroke-width="1.5" opacity="0.7"/>
+    </g>
+  </defs>
+
+  <!-- parchment -->
+  <rect width="1600" height="1200" fill="#f3ead7"/>
+
+  <!-- the sea, west of the coast -->
+  <path d="M 250 0
+           C 235 90 205 170 210 260
+           C 214 320 250 350 320 372
+           C 395 396 432 418 430 452
+           C 428 492 380 512 300 522
+           C 235 530 205 560 208 620
+           C 212 700 250 760 268 830
+           C 288 905 330 1000 355 1080
+           C 372 1140 382 1175 386 1200
+           L 0 1200 L 0 0 Z"
+        fill="#e9e0c9"/>
+  <!-- coastal hatching: the old chart-maker's habit of shading the water side -->
+  <g fill="none" stroke="#a3947a" stroke-width="1.4">
+    <path d="M 238 0 C 223 90 193 170 198 260 C 202 322 238 353 308 375 C 384 399 420 420 418 452 C 416 490 368 501 288 511 C 223 519 193 560 196 620 C 200 700 238 760 256 830 C 276 905 318 1000 343 1080 C 360 1140 370 1175 374 1200" opacity="0.55"/>
+    <path d="M 222 0 C 207 90 177 172 182 260 C 186 326 222 358 292 380 C 366 403 404 423 402 452 C 400 486 352 489 272 499 C 207 507 177 562 180 620 C 184 700 222 762 240 832 C 260 907 302 1002 327 1082 C 344 1142 354 1176 358 1200" opacity="0.35"/>
+    <path d="M 202 0 C 187 92 157 174 162 262 C 166 330 202 364 272 386 C 344 408 384 426 382 452 C 380 481 332 476 252 486 C 187 494 157 564 160 622 C 164 702 202 764 220 834 C 240 909 282 1004 307 1084 C 324 1144 334 1177 338 1200" opacity="0.2"/>
+  </g>
+  <!-- the coastline itself -->
+  <path d="M 250 0
+           C 235 90 205 170 210 260
+           C 214 320 250 350 320 372
+           C 395 396 432 418 430 452
+           C 428 492 380 512 300 522
+           C 235 530 205 560 208 620
+           C 212 700 250 760 268 830
+           C 288 905 330 1000 355 1080
+           C 372 1140 382 1175 386 1200"
+        fill="none" stroke="#4d4536" stroke-width="3" stroke-linecap="round"/>
+
+  <!-- open-water flourishes -->
+  <use href="#wave" x="96" y="330"/>
+  <use href="#wave" x="60" y="560"/>
+  <use href="#wave" x="130" y="660"/>
+  <use href="#wave" x="70" y="940"/>
+  <use href="#wave" x="180" y="1060"/>
+  <use href="#wave" x="110" y="220"/>
+
+  <!-- something old in the southern water -->
+  <g stroke="#4d4536" stroke-width="2.2" fill="none" opacity="0.75" stroke-linecap="round">
+    <path d="M 118 822 Q 130 804 142 822"/>
+    <path d="M 152 822 Q 164 802 176 822"/>
+    <path d="M 186 824 Q 198 810 204 826"/>
+    <circle cx="108" cy="816" r="7" fill="#e9e0c9"/>
+    <path d="M 104 810 Q 98 800 106 796"/>
+  </g>
+  <circle cx="106" cy="814" r="1.4" fill="#4d4536"/>
+
+  <!-- compass rose, riding the northern water -->
+  <g transform="translate(132,140)" stroke="#4d4536" fill="none">
+    <circle r="40" stroke-width="1.6" opacity="0.8"/>
+    <circle r="30" stroke-width="1" opacity="0.5"/>
+    <path d="M 0 -38 L 6 0 L 0 10 L -6 0 Z" fill="#4d4536" stroke="none" opacity="0.85"/>
+    <path d="M 0 38 L 5 0 L -5 0 Z" fill="#f3ead7" stroke="#4d4536" stroke-width="1.2"/>
+    <path d="M -34 0 L 0 5 L 34 0 L 0 -5 Z" fill="none" stroke-width="1.2" opacity="0.7"/>
+    <path d="M -22 -22 L 22 22 M 22 -22 L -22 22" stroke-width="0.9" opacity="0.4"/>
+  </g>
+
+  <!-- the river, fells to bay -->
+  <path d="M 1352 192
+           C 1292 242 1242 262 1182 302
+           C 1122 342 1106 352 1062 374
+           C 992 407 902 417 812 422
+           C 702 430 562 432 472 447
+           L 432 452"
+        fill="none" stroke="#7f8f86" stroke-width="5" stroke-linecap="round" opacity="0.85"/>
+  <path d="M 1352 192
+           C 1292 242 1242 262 1182 302
+           C 1122 342 1106 352 1062 374
+           C 992 407 902 417 812 422
+           C 702 430 562 432 472 447"
+        fill="none" stroke="#4d4536" stroke-width="1.2" opacity="0.35"/>
+
+  <!-- the broken span: two piers and a fallen middle -->
+  <g stroke="#4d4536" stroke-width="2.4" fill="#ede3cc" stroke-linejoin="round">
+    <path d="M 1042 352 L 1054 348 L 1058 366 L 1046 370 Z"/>
+    <path d="M 1078 388 L 1090 384 L 1094 402 L 1082 406 Z"/>
+    <path d="M 1054 350 Q 1062 344 1070 348" fill="none" opacity="0.8"/>
+    <path d="M 1080 392 Q 1074 396 1068 392" fill="none" opacity="0.8"/>
+    <path d="M 1062 372 L 1066 380" fill="none" stroke-width="1.6" opacity="0.6"/>
+    <path d="M 1070 366 L 1076 374" fill="none" stroke-width="1.6" opacity="0.6"/>
+  </g>
+
+  <!-- the grey fells -->
+  <g>
+    <use href="#peak" x="960"  y="150"/>
+    <use href="#peak" x="1010" y="128" transform="scale(1)"/>
+    <use href="#peak" x="1065" y="152"/>
+    <use href="#peak" x="1122" y="126"/>
+    <use href="#peak" x="1178" y="150"/>
+    <use href="#peak" x="1238" y="120"/>
+    <use href="#peak" x="1296" y="146"/>
+    <use href="#peak" x="1356" y="118"/>
+    <use href="#peak" x="1416" y="142"/>
+    <use href="#peak" x="1476" y="122"/>
+    <use href="#peak" x="1508" y="168"/>
+    <use href="#peak" x="1445" y="192"/>
+    <use href="#peak" x="1380" y="205"/>
+    <use href="#peak" x="1315" y="215"/>
+    <use href="#peak" x="1032" y="200"/>
+    <use href="#peak" x="1092" y="215"/>
+    <use href="#peak" x="1152" y="228"/>
+    <use href="#peak" x="1218" y="238"/>
+    <use href="#peak" x="1450" y="470"/>
+    <use href="#peak" x="1505" y="498"/>
+    <use href="#peak" x="1472" y="535"/>
+  </g>
+  <!-- foothills trailing off the fells -->
+  <use href="#hill" x="940" y="256"/>
+  <use href="#hill" x="1000" y="278"/>
+  <use href="#hill" x="1270" y="285"/>
+  <use href="#hill" x="1340" y="268"/>
+  <use href="#hill" x="1420" y="290"/>
+  <use href="#hill" x="1435" y="570"/>
+  <use href="#hill" x="1500" y="590"/>
+  <use href="#hill" x="620" y="640"/>
+  <use href="#hill" x="668" y="662"/>
+  <use href="#hill" x="580" y="676"/>
+
+  <!-- northwest woods -->
+  <g>
+    <use href="#tree" x="352" y="196"/>
+    <use href="#tree" x="392" y="172"/>
+    <use href="#tree" x="436" y="196"/>
+    <use href="#tree" x="480" y="174"/>
+    <use href="#tree" x="524" y="198"/>
+    <use href="#tree" x="566" y="178"/>
+    <use href="#tree" x="376" y="234"/>
+    <use href="#tree" x="420" y="240"/>
+    <use href="#tree" x="466" y="232"/>
+    <use href="#tree" x="512" y="242"/>
+    <use href="#tree" x="556" y="230"/>
+    <use href="#tree" x="400" y="278"/>
+    <use href="#tree" x="448" y="284"/>
+    <use href="#tree" x="498" y="280"/>
+  </g>
+  <!-- eastern woods, along the river's far side -->
+  <g>
+    <use href="#tree" x="1170" y="640"/>
+    <use href="#tree" x="1218" y="618"/>
+    <use href="#tree" x="1266" y="644"/>
+    <use href="#tree" x="1314" y="620"/>
+    <use href="#tree" x="1362" y="646"/>
+    <use href="#tree" x="1194" y="686"/>
+    <use href="#tree" x="1242" y="692"/>
+    <use href="#tree" x="1292" y="684"/>
+    <use href="#tree" x="1340" y="694"/>
+    <use href="#tree" x="1388" y="682"/>
+    <use href="#tree" x="1218" y="736"/>
+    <use href="#tree" x="1268" y="742"/>
+    <use href="#tree" x="1318" y="734"/>
+    <use href="#tree" x="1244" y="784"/>
+    <use href="#tree" x="1294" y="790"/>
+    <use href="#tree" x="1366" y="744"/>
+  </g>
+
+  <!-- the harbor: a grey little port at the bay's head -->
+  <g stroke="#4d4536" stroke-width="1.8" fill="#ede3cc" stroke-linejoin="round">
+    <path d="M 442 430 L 442 418 L 449 412 L 456 418 L 456 430 Z"/>
+    <path d="M 462 434 L 462 424 L 468 419 L 474 424 L 474 434 Z"/>
+    <path d="M 448 448 L 448 438 L 455 432 L 462 438 L 462 448 Z"/>
+    <path d="M 470 452 L 470 444 L 475 440 L 480 444 L 480 452 Z"/>
+    <!-- the quay, reaching into the bay -->
+    <path d="M 436 452 L 400 458" fill="none" stroke-width="2.6"/>
+    <path d="M 408 454 L 408 462 M 420 453 L 420 461" fill="none" stroke-width="1.2"/>
+  </g>
+  <!-- boats riding the bay -->
+  <g stroke="#4d4536" stroke-width="1.6" fill="#ede3cc" stroke-linecap="round">
+    <path d="M 342 428 Q 350 436 362 428 L 358 431 L 346 431 Z"/>
+    <path d="M 352 428 L 352 414 M 352 416 L 360 422" fill="none"/>
+    <path d="M 300 470 Q 308 478 320 470 L 316 473 L 304 473 Z"/>
+    <path d="M 310 470 L 310 458" fill="none"/>
+  </g>
+
+  <!-- the welcome stone: a menhir in open grass, ringed by lesser stones -->
+  <g transform="translate(832,562)">
+    <circle r="24" fill="none" stroke="#4d4536" stroke-width="1" stroke-dasharray="2 5" opacity="0.5"/>
+    <path d="M -5 0 L -4 -20 L 2 -23 L 6 -2 Z" fill="#ded2b6" stroke="#4d4536" stroke-width="2" stroke-linejoin="round"/>
+    <ellipse cx="1" cy="2" rx="9" ry="2.5" fill="rgba(77,69,54,0.18)"/>
+    <circle cx="-18" cy="10" r="2.2" fill="#4d4536" opacity="0.6"/>
+    <circle cx="16" cy="12" r="2" fill="#4d4536" opacity="0.6"/>
+    <circle cx="20" cy="-8" r="1.8" fill="#4d4536" opacity="0.6"/>
+    <circle cx="-14" cy="-14" r="2" fill="#4d4536" opacity="0.6"/>
+  </g>
+  <!-- grass ticks on the plain -->
+  <g stroke="#5c5443" stroke-width="1.2" opacity="0.5">
+    <path d="M 740 520 l 3 -6 M 746 520 l 3 -6"/>
+    <path d="M 900 610 l 3 -6 M 906 610 l 3 -6"/>
+    <path d="M 770 640 l 3 -6 M 776 640 l 3 -6"/>
+    <path d="M 950 530 l 3 -6 M 956 530 l 3 -6"/>
+    <path d="M 640 480 l 3 -6 M 646 480 l 3 -6"/>
+  </g>
+
+  <!-- the low fen: a mere ringed with tufts -->
+  <ellipse cx="978" cy="958" rx="60" ry="26" fill="#e9e0c9" stroke="#4d4536" stroke-width="1.6" opacity="0.9"/>
+  <use href="#wave" x="958" y="958"/>
+  <g>
+    <use href="#tuft" x="854" y="912"/>
+    <use href="#tuft" x="898" y="890"/>
+    <use href="#tuft" x="1052" y="900"/>
+    <use href="#tuft" x="1102" y="930"/>
+    <use href="#tuft" x="1122" y="982"/>
+    <use href="#tuft" x="1066" y="1012"/>
+    <use href="#tuft" x="986" y="1032"/>
+    <use href="#tuft" x="906" y="1020"/>
+    <use href="#tuft" x="860" y="978"/>
+    <use href="#tuft" x="936" y="898"/>
+    <use href="#tuft" x="1010" y="886"/>
+    <use href="#tuft" x="810" y="948"/>
+    <use href="#tuft" x="1150" y="952"/>
+    <use href="#tuft" x="944" y="1064"/>
+  </g>
+
+  <!-- tracks: dotted, the way feet remember -->
+  <g fill="none" stroke="#4d4536" stroke-width="2" stroke-dasharray="1.5 8" stroke-linecap="round" opacity="0.45">
+    <path d="M 812 566 C 700 560 560 520 452 462"/>
+    <path d="M 848 548 C 920 500 1000 430 1052 386"/>
+    <path d="M 838 584 C 860 680 900 800 942 906"/>
+  </g>
+
+  <!-- region lettering, the chart-maker's hand -->
+  <g fill="#6b5f4b" font-family="Georgia, 'Times New Roman', serif" font-size="26" letter-spacing="13" opacity="0.55">
+    <text x="1060" y="82">THE GREY FELLS</text>
+    <text x="855" y="1132">THE LOW FEN</text>
+    <text x="120" y="520" transform="rotate(-77 120 520)">THE SALT COAST</text>
+  </g>
+
+  <!-- weathering -->
+  <rect width="1600" height="1200" filter="url(#grain)"/>
+  <rect width="1600" height="1200" fill="url(#vignette)"/>
+
+  <!-- the frame -->
+  <rect x="14" y="14" width="1572" height="1172" fill="none" stroke="#4d4536" stroke-width="3.5" opacity="0.85"/>
+  <rect x="26" y="26" width="1548" height="1148" fill="none" stroke="#4d4536" stroke-width="1.2" opacity="0.6"/>
+  <g fill="#4d4536" opacity="0.85">
+    <rect x="10" y="10" width="12" height="12"/>
+    <rect x="1578" y="10" width="12" height="12"/>
+    <rect x="10" y="1178" width="12" height="12"/>
+    <rect x="1578" y="1178" width="12" height="12"/>
+  </g>
+</svg>

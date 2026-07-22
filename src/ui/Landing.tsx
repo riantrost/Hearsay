@@ -15,6 +15,8 @@ export interface LandingProps {
   onSeated: (seat: Seat) => void;
   /** An existing campaign was picked from the list — it's already active, open it. */
   onResume: () => void;
+  /** Open the baked-in example table — a look around, never a seat. */
+  onExample: () => void;
   notice?: string;
   /** Whether this deployment offers the Google recovery thread. */
   google?: boolean;
@@ -22,10 +24,9 @@ export interface LandingProps {
   onGoogle?: () => void;
 }
 
-export function Landing({ onSeated, onResume, notice, google, onGoogle }: LandingProps) {
+export function Landing({ onSeated, onResume, onExample, notice, google, onGoogle }: LandingProps) {
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
-  const [joinCode, setJoinCode] = useState('');
   // removals re-render through this counter; the seat book itself is localStorage
   const [, setBookVersion] = useState(0);
   const seats = loadSeats();
@@ -125,29 +126,13 @@ export function Landing({ onSeated, onResume, notice, google, onGoogle }: Landin
       <section class="landing-card">
         <h2>Join a campaign</h2>
         <form onSubmit={submitJoin}>
-          <input
-            name="code"
-            placeholder="join code"
-            required
-            maxLength={12}
-            autocapitalize="characters"
-            value={joinCode}
-            onInput={(ev) => setJoinCode((ev.currentTarget as HTMLInputElement).value)}
-          />
+          <input name="code" placeholder="join code" required maxLength={12} autocapitalize="characters" />
           <input name="joinName" placeholder="your name" required maxLength={60} />
           <button class="primary" disabled={busy}>Join</button>
         </form>
         <p class="example-invite">
           just looking?{' '}
-          <button
-            type="button"
-            class="linklike"
-            onClick={(ev) => {
-              setJoinCode('EXAMPLE');
-              const form = (ev.currentTarget as HTMLElement).closest('section')?.querySelector<HTMLInputElement>('[name=joinName]');
-              form?.focus();
-            }}
-          >
+          <button type="button" class="linklike" onClick={onExample}>
             View the example campaign
           </button>
         </p>

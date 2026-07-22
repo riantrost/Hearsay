@@ -1,17 +1,24 @@
-{
-  "version": "0.0.1",
-  "configurations": [
-    {
-      "name": "hearsay-dev",
-      "runtimeExecutable": "npm",
-      "runtimeArgs": ["run", "dev"],
-      "port": 5173
-    },
-    {
-      "name": "hearsay-api",
-      "runtimeExecutable": "npm",
-      "runtimeArgs": ["run", "api"],
-      "port": 8788
-    }
-  ]
+﻿{
+    "version":  "0.0.1",
+    "configurations":  [
+                           {
+                               "name":  "hearsay-dev",
+                               "runtimeExecutable":  "npm",
+                               "runtimeArgs":  [
+                                                   "run",
+                                                   "dev"
+                                               ],
+                               "port":  5173,
+                               "autoPort":  true
+                           },
+                           {
+                               "name":  "hearsay-api",
+                               "runtimeExecutable":  "npm",
+                               "runtimeArgs":  [
+                                                   "run",
+                                                   "api"
+                                               ],
+                               "port":  8788
+                           }
+                       ]
 }

@@ -67,10 +67,18 @@ const noMove = (): void => {};
 
 describe('Landing', () => {
   it('speaks plainly: Create campaign / Join / example invite', () => {
-    const { getByText } = render(<Landing onSeated={() => {}} onResume={() => {}} />);
+    const { getByText } = render(<Landing onSeated={() => {}} onResume={() => {}} onExample={() => {}} />);
     getByText('Create campaign');
     getByText('Join');
     getByText('View the example campaign');
+  });
+
+  it('the example invite opens the walkthrough, never the join form', () => {
+    const onExample = vi.fn();
+    const { getByText, container } = render(<Landing onSeated={() => {}} onResume={() => {}} onExample={onExample} />);
+    fireEvent.click(getByText('View the example campaign'));
+    expect(onExample).toHaveBeenCalled();
+    expect(container.querySelector<HTMLInputElement>('[name=code]')!.value).toBe('');
   });
 });
 
@@ -108,6 +116,16 @@ describe('PinPanel — the one-box account flow', () => {
     expect(store.writeTestimony).toHaveBeenCalledWith('e2', 'what I saw');
     expect(queryByText('amend')).toBeNull();
     expect(queryByText('testify')).toBeNull();
+  });
+
+  it('absent voices collapse to one quiet line, never a row per silence', () => {
+    const data = makeData();
+    data.members.push({ id: 'm3', campaignId: 'c1', name: 'Ossian', role: 'player', status: 'active' });
+    // e2 has no testimony at all: Maren and Ossian are missing, m2 is the viewer's own box
+    const { getAllByText, queryByText } = render(<PinPanel store={makeStore(data)} pinId="p1" onStartMove={noMove} />);
+    expect(queryByText('an open slot, quietly waiting')).toBeNull();
+    const lines = getAllByText(/voices still missing: Maren, Ossian/);
+    expect(lines.length).toBe(2); // one line per event, not one row per member
   });
 
   it('a closed account reads locked, plainly', () => {
