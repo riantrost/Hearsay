@@ -12,12 +12,10 @@ id = "0a135109757a4ef9888227d997977809"
 # Campaign data lives here since the KV→D1 migration (strongly consistent —
 # the eventual-consistency ledger era is over). KV stays bound only through
 # the cutover window (auth sessions + the Example Table copy), then retires.
-# database_id is the placeholder pattern: minted Rian-side at cutover with
-# `wrangler d1 create hearsay`, real id pasted in before deploy.
 [[d1_databases]]
 binding = "DB"
 database_name = "hearsay"
-database_id = "00000000-0000-0000-0000-000000000000"
+database_id = "43e8a11a-189b-4a75-b1f1-1bd6bf43b4f4"
 migrations_dir = "migrations"
 
 [[r2_buckets]]
