@@ -5,8 +5,14 @@
 // and return the record they touched — the server persists exactly that
 // record, which is what keeps concurrent writers from clobbering each other.
 
-import type { CampaignData, Member, Pin, SiteEvent, Testimony } from './model';
-import { MARK_MAX_CHARS, MAX_ATMOSPHERE_CHARS, MAX_TESTIMONY_CHARS } from './model';
+import type { Bounty, CampaignData, Member, Pin, SiteEvent, Testimony } from './model';
+import {
+  MARK_MAX_CHARS,
+  MAX_ATMOSPHERE_CHARS,
+  MAX_BOUNTY_REASON_CHARS,
+  MAX_BOUNTY_TARGET_CHARS,
+  MAX_TESTIMONY_CHARS,
+} from './model';
 
 export function newId(prefix: string): string {
   return `${prefix}${crypto.randomUUID().replaceAll('-', '').slice(0, 12)}`;
@@ -45,16 +51,23 @@ export function testimonyVisibleTo(data: CampaignData, t: Testimony, viewerId: s
  */
 export function visibleData(data: CampaignData, viewerId: string): CampaignData {
   const viewer = data.members.find((m) => m.id === viewerId);
-  let { pins, events } = data;
+  let { pins, events, bounties } = data;
   let testimony = data.testimony.filter((t) => testimonyVisibleTo(data, t, viewerId));
   if (viewer?.role !== 'owner') {
     const staged = new Set(pins.filter((p) => p.hidden).map((p) => p.id));
     const stagedEvents = new Set(events.filter((e) => staged.has(e.pinId)).map((e) => e.id));
-    pins = pins.filter((p) => !staged.has(p.id));
     events = events.filter((e) => !stagedEvents.has(e.id));
     testimony = testimony.filter((t) => !stagedEvents.has(t.eventId));
+    // "a site with no history has no page" holds on the wire, not just the
+    // render: a staged pin (its events stripped above) and a ghost (named but
+    // event-less — the owner's private scaffolding) both fall out here, so a
+    // player's payload never carries a place they can't see, not even by name
+    const hasEvent = new Set(events.map((e) => e.pinId));
+    pins = pins.filter((p) => hasEvent.has(p.id));
+    // a proposed bounty is the poster's and the owner's secret until the nail
+    bounties = bounties.filter((b) => b.status !== 'proposed' || b.postedBy === viewerId);
   }
-  return { ...data, pins, events, testimony };
+  return { ...data, pins, events, testimony, bounties };
 }
 
 /**
@@ -130,11 +143,25 @@ export function addEvent(
     session: data.campaign.currentSession,
     canonLine: line,
     ...(air ? { atmosphere: air } : {}),
-    // everyone at the table by default; the owner may also play
-    participantIds: participantIds ?? data.members.map((m) => m.id),
+    // open to the whole table by default: an empty list is resolved live, so a
+    // player who joins after this event drops still gets a slot (the common
+    // first-night order — the owner seeds the world, then players arrive). A
+    // non-empty list is an owner-scoped subset (deferred; nothing writes one).
+    participantIds: participantIds ?? [],
   };
   data.events.push(event);
   return event;
+}
+
+/**
+ * Who holds a testimony slot on an event. An empty `participantIds` means the
+ * event is open to the whole table — resolved live against the current roster,
+ * never frozen to the snapshot at drop time, so latecomers are never locked
+ * out. A non-empty list is honored as an owner-scoped subset (the scoping
+ * feature is deferred, so today this always resolves to the whole table).
+ */
+export function eventParticipants(data: CampaignData, event: SiteEvent): string[] {
+  return event.participantIds.length > 0 ? event.participantIds : data.members.map((m) => m.id);
 }
 
 /**
@@ -195,7 +222,7 @@ export function writeTestimony(data: CampaignData, eventId: string, memberId: st
   }
   const event = data.events.find((e) => e.id === eventId);
   if (!event) throw new Error('no such event');
-  if (!event.participantIds.includes(memberId)) throw new Error('not a participant in this event');
+  if (!eventParticipants(data, event).includes(memberId)) throw new Error('not a participant in this event');
   const entry: Testimony = {
     id: newId('t'),
     eventId,
@@ -205,6 +232,68 @@ export function writeTestimony(data: CampaignData, eventId: string, memberId: st
   };
   data.testimony.push(entry);
   return entry;
+}
+
+// --- the bounty board (players propose revenge; the owner nails it up) ---
+
+/**
+ * Post a bounty proposal. Any member may post — pending members included,
+ * since the owner's ratification is the only gate that matters — and it
+ * stays visible only to poster and owner until approved. The target is free
+ * text (a rival, an NPC, the thing under the fen); any reward lives in the
+ * words. The app never models currency or resolution — that's the table's.
+ */
+export function postBounty(data: CampaignData, memberId: string, target: string, reason: string): Bounty {
+  if (!data.members.some((m) => m.id === memberId)) throw new Error('no such member');
+  const quarry = target.trim();
+  const words = reason.trim();
+  if (!quarry) throw new Error('a bounty needs its quarry');
+  if (quarry.length > MAX_BOUNTY_TARGET_CHARS) throw new Error(`name the quarry, not their history: ${MAX_BOUNTY_TARGET_CHARS} characters at most`);
+  if (!words) throw new Error('a bounty needs a grievance');
+  if (words.length > MAX_BOUNTY_REASON_CHARS) throw new Error(`a bounty is a poster, not a saga: ${MAX_BOUNTY_REASON_CHARS} characters at most`);
+  const bounty: Bounty = {
+    id: newId('b'),
+    campaignId: data.campaign.id,
+    postedBy: memberId,
+    target: quarry,
+    reason: words,
+    session: data.campaign.currentSession,
+    status: 'proposed',
+  };
+  data.bounties.push(bounty);
+  return bounty;
+}
+
+/** The owner nails a proposed bounty to the board — the table can read it now. */
+export function approveBounty(data: CampaignData, bountyId: string): Bounty {
+  const bounty = data.bounties.find((b) => b.id === bountyId);
+  if (!bounty) throw new Error('no such bounty');
+  if (bounty.status !== 'proposed') throw new Error('this bounty is already on the board');
+  bounty.status = 'posted';
+  return bounty;
+}
+
+/** The owner refuses a proposal; paper that never reached the board just goes. */
+export function declineBounty(data: CampaignData, bountyId: string): Bounty {
+  const bounty = data.bounties.find((b) => b.id === bountyId);
+  if (!bounty) throw new Error('no such bounty');
+  if (bounty.status !== 'proposed') throw new Error('only a proposed bounty can be declined');
+  data.bounties = data.bounties.filter((b) => b.id !== bountyId);
+  return bounty;
+}
+
+/**
+ * The owner strikes a posted bounty settled — crossed out at the current
+ * session, never erased. How it was settled is testimony's business; the
+ * board only remembers that it was.
+ */
+export function strikeBounty(data: CampaignData, bountyId: string): Bounty {
+  const bounty = data.bounties.find((b) => b.id === bountyId);
+  if (!bounty) throw new Error('no such bounty');
+  if (bounty.status !== 'posted') throw new Error('only a posted bounty can be struck');
+  bounty.status = 'struck';
+  bounty.struckSession = data.campaign.currentSession;
+  return bounty;
 }
 
 /** Promote one line of your own testimony to a mark on the pin. */

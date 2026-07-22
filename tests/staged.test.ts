@@ -78,6 +78,15 @@ describe('visibleData strips the staged layer', () => {
     expect(view.events.map((e) => e.id)).toContain('es');
     expect(view.testimony.map((t) => t.id)).toContain('ts');
   });
+
+  it('strips ghost pins too — a named, event-less place is owner-only scaffolding', () => {
+    // seed's p3 (the White Tower) is revealed but has no events: a ghost
+    const data = structuredClone(seed);
+    expect(visibleData(data, 'm2').pins.map((p) => p.id)).not.toContain('p3');
+    expect(visibleData(data, 'm1').pins.map((p) => p.id)).toContain('p3');
+    // pins that carry history still reach the player
+    expect(visibleData(data, 'm2').pins.map((p) => p.id)).toEqual(expect.arrayContaining(['p1', 'p2', 'p4']));
+  });
 });
 
 describe('map layers keep staged pins out of the ordinary world', () => {

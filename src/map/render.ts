@@ -3,6 +3,7 @@
 // Viewport re-applies its transform to the fresh <g class="vp"> afterwards.
 
 import type { CampaignData, Pin, Testimony } from '../model';
+import { eventParticipants } from '../mutations';
 
 const SVG_NS = 'http://www.w3.org/2000/svg';
 
@@ -57,8 +58,9 @@ export function pinPulse(data: CampaignData, pinId: string, session: number): Pi
   let total = 0;
   for (const e of events) {
     if (e.session !== latestSession) continue;
-    total += e.participantIds.length;
-    filled += e.participantIds.filter((id) => data.testimony.some((t) => t.eventId === e.id && t.memberId === id)).length;
+    const participants = eventParticipants(data, e);
+    total += participants.length;
+    filled += participants.filter((id) => data.testimony.some((t) => t.eventId === e.id && t.memberId === id)).length;
   }
   return { latestSession, age: session - latestSession, filled, total };
 }

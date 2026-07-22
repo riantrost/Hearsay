@@ -41,4 +41,12 @@ export const seed: CampaignData = {
     // a pending member's words: visible only to Thistle and the owner
     { id: 't5', eventId: 'e4', memberId: 'm4', session: 4, text: 'I heard the bell too, from the reeds where I was hiding. It rang three times before anyone else arrived. I counted.' },
   ],
+  bounties: [
+    // posted: on the board for the whole table
+    { id: 'b1', campaignId: 'c1', postedBy: 'm2', target: "Ossian's archer", session: 3, status: 'posted', reason: 'Brann drowned under the span chasing a light your archer swore was treasure. Fifty crowns of my own for the bow that lied.' },
+    // proposed: awaiting the owner's nail — only Ossian and the owner see it
+    { id: 'b2', campaignId: 'c1', postedBy: 'm3', target: 'The bell-ringer of the Drowned Fen', session: 4, status: 'proposed', reason: 'Whatever answered the third bell took my best soldier under the water. I want proof it can die.' },
+    // struck: settled at session 3, crossed out but never erased
+    { id: 'b3', campaignId: 'c1', postedBy: 'm3', target: 'The lantern-keeper under the ice', session: 1, status: 'struck', struckSession: 3, reason: 'For the scar my apprentice carries from the span. Settled the day the ice took its lantern back.' },
+  ],
 };

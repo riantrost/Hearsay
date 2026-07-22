@@ -4,7 +4,7 @@
 // Identity is table-cheap: a bearer token minted at create/join maps straight
 // to a member; no accounts, no passwords, recoverable by re-invite.
 
-import type { Campaign, CampaignData, Member, Pin, SiteEvent, Testimony } from '../src/model';
+import type { Bounty, Campaign, CampaignData, Member, Pin, SiteEvent, Testimony } from '../src/model';
 
 export interface Env {
   HEARSAY: KVNamespace;
@@ -32,6 +32,7 @@ export const memberKey = (cid: string, id: string) => `c:${cid}:m:${id}`;
 export const pinKey = (cid: string, id: string) => `c:${cid}:p:${id}`;
 export const eventKey = (cid: string, id: string) => `c:${cid}:e:${id}`;
 export const testimonyKey = (cid: string, id: string) => `c:${cid}:t:${id}`;
+export const bountyKey = (cid: string, id: string) => `c:${cid}:b:${id}`;
 export const tokenKey = (token: string) => `tok:${token}`;
 export const codeKey = (code: string) => `code:${code.toUpperCase()}`;
 /** One record per Google account: the seats it can recover, across campaigns. */
@@ -93,6 +94,7 @@ export async function loadCampaignData(env: Env, cid: string): Promise<CampaignD
   const pins: Pin[] = [];
   const events: SiteEvent[] = [];
   const testimony: Testimony[] = [];
+  const bounties: Bounty[] = [];
   for (const [name, value] of values) {
     if (value == null) continue;
     const kind = name.slice(prefix.length).split(':')[0];
@@ -101,9 +103,10 @@ export async function loadCampaignData(env: Env, cid: string): Promise<CampaignD
     else if (kind === 'p') pins.push(value as Pin);
     else if (kind === 'e') events.push(value as SiteEvent);
     else if (kind === 't') testimony.push(value as Testimony);
+    else if (kind === 'b') bounties.push(value as Bounty);
   }
   if (!campaign) return null;
-  return { campaign, members, pins, events, testimony };
+  return { campaign, members, pins, events, testimony, bounties };
 }
 
 /**

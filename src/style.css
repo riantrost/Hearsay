@@ -236,67 +236,91 @@ svg.map { width: 100%; height: 100%; display: block; }
 }
 .testimony.empty .testimony-author { color: #a39680; }
 
-/* identity */
+/* identity — one panel, one voice: prose in sentence case, controls as quiet
+   ghosts, ember reserved for the acts that resolve something (approve).
+   The panel sleeps as a name; admin waits behind the caret. */
 .identity {
   position: absolute;
   top: 12px;
   left: 12px;
-  max-width: min(340px, 80vw);
-  background: rgba(34, 48, 60, 0.92);
+  width: min(300px, 80vw);
+  background: rgba(30, 42, 53, 0.94);
   color: #dfe9f0;
   padding: 10px 14px;
-  border-radius: 4px;
+  border-radius: 6px;
+  border: 1px solid rgba(90, 113, 134, 0.45);
+  box-shadow: 0 3px 12px rgba(10, 16, 22, 0.35);
   display: flex;
   flex-direction: column;
-  gap: 6px;
+  gap: 8px;
 }
-.identity .seat-line {
-  font-variant: small-caps;
-  letter-spacing: 1.5px;
-  font-size: 14px;
+.identity-head {
   display: flex;
-  align-items: center;
+  align-items: baseline;
+  justify-content: space-between;
   gap: 10px;
 }
-.identity button {
+.identity .seat-name {
+  font-size: 15px;
+  font-style: italic;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+/* the quiet button: the one shape for every administrative control */
+.identity button.quiet {
   font-family: inherit;
-  font-variant: small-caps;
-  letter-spacing: 1px;
+  font-size: 12px;
+  background: transparent;
+  border: 1px solid rgba(90, 113, 134, 0.7);
+  border-radius: 3px;
+  color: #9fb4c4;
+  padding: 2px 10px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.identity button.quiet:hover { border-color: #9fb4c4; color: #dfe9f0; }
+.identity button.quiet.attention {
+  border-color: #b8552f;
+  color: #e0a184;
+}
+/* ember is for resolution, nothing else */
+.identity button.approve {
+  font-family: inherit;
   font-size: 12px;
   background: #b8552f;
+  border: 1px solid #b8552f;
+  border-radius: 3px;
   color: #f4ede2;
-  border: none;
   padding: 2px 10px;
   cursor: pointer;
 }
-.identity button:hover { background: #9a4526; }
-.identity button.leave,
-.identity button.decline {
-  background: transparent;
-  border: 1px solid #5a7186;
-  color: #9fb4c4;
+.identity button.approve:hover { background: #9a4526; }
+.identity-body {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  border-top: 1px solid rgba(90, 113, 134, 0.35);
+  padding-top: 8px;
 }
-.identity button.leave:hover,
-.identity button.decline:hover { border-color: #b8552f; color: #dfe9f0; }
+.identity-row {
+  font-size: 13px;
+  color: #b9c9d6;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.identity-row.code-row { letter-spacing: 1.5px; }
+.identity-row.identity-foot {
+  border-top: 1px solid rgba(90, 113, 134, 0.35);
+  padding-top: 8px;
+  justify-content: flex-end;
+}
 .identity .pending-hint {
   font-size: 12px;
   font-style: italic;
   color: #9fb4c4;
-}
-.identity .code-row {
-  font-size: 13px;
-  letter-spacing: 1px;
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-.identity .pending-row {
-  font-size: 13px;
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  border-top: 1px solid #3d5266;
-  padding-top: 6px;
 }
 
 /* landing */
@@ -463,11 +487,41 @@ svg.map { width: 100%; height: 100%; display: block; }
   background: transparent;
 }
 .reveal-form input { border-color: #3d5266; }
+.reveal-head {
+  font-size: 13px;
+  text-transform: uppercase;
+  letter-spacing: 2px;
+  color: #3d5266;
+  margin-top: 6px;
+}
 .add-event {
   margin-top: 24px;
   border-top: 2px solid #c9bda4;
   padding-top: 12px;
 }
+.participant-picker {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 12px;
+  margin: 8px 0;
+}
+.participant-picker .picker-label {
+  font-variant: small-caps;
+  letter-spacing: 1px;
+  font-size: 12px;
+  color: #a39680;
+  margin-right: 4px;
+}
+.participant {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 13px;
+  color: #3d5266;
+  cursor: pointer;
+}
+.participant input { cursor: pointer; accent-color: #b8552f; }
 
 /* deliberate pin placement */
 .place-btn {
@@ -695,6 +749,141 @@ svg.map { width: 100%; height: 100%; display: block; }
   cursor: pointer;
 }
 .help-card button:hover { background: #9a4526; }
+
+/* the bounty board: a pill in the corner, a wall of paper when opened */
+.board-btn {
+  position: absolute;
+  bottom: 12px;
+  left: 12px;
+  z-index: 6;
+  font-family: inherit;
+  font-size: 13px;
+  letter-spacing: 1px;
+  background: rgba(30, 42, 53, 0.94);
+  color: #9fb4c4;
+  border: 1px solid rgba(90, 113, 134, 0.7);
+  border-radius: 14px;
+  padding: 4px 14px;
+  cursor: pointer;
+  white-space: nowrap;
+  box-shadow: 0 3px 12px rgba(10, 16, 22, 0.4);
+}
+.board-btn:hover { color: #dfe9f0; border-color: #9fb4c4; }
+.board-btn.attention { border-color: #b8552f; color: #e0a184; }
+.board-overlay {
+  position: absolute;
+  inset: 0;
+  z-index: 20;
+  background: rgba(10, 16, 22, 0.55);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+}
+.board-card {
+  width: min(460px, 94vw);
+  max-height: 84vh;
+  overflow-y: auto;
+  background: #f4ede2;
+  color: #2b3a47;
+  border-left: 3px solid #b8552f;
+  box-shadow: 0 8px 32px rgba(10, 16, 22, 0.5);
+  padding: 20px 22px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.board-card h2 {
+  font-size: 17px;
+  font-variant: small-caps;
+  letter-spacing: 2px;
+}
+.board-group {
+  font-size: 12px;
+  font-variant: small-caps;
+  letter-spacing: 2px;
+  color: #a39680;
+  border-bottom: 1px solid #d8cdb8;
+  padding-bottom: 2px;
+  margin-top: 6px;
+}
+.board-empty { font-style: italic; color: #a39680; }
+.bounty {
+  background: #faf5ea;
+  border: 1px solid #d8cdb8;
+  padding: 10px 12px;
+  transform: rotate(-0.4deg);
+  box-shadow: 0 2px 6px rgba(60, 45, 25, 0.12);
+}
+.bounty:nth-child(odd) { transform: rotate(0.5deg); }
+.bounty h3 { font-size: 16px; letter-spacing: 0.5px; }
+.bounty p { font-size: 14px; font-style: italic; color: #5a4632; margin: 4px 0; }
+.bounty-byline {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 1.5px;
+  color: #a39680;
+}
+.bounty.proposed { border-style: dashed; opacity: 0.92; }
+.bounty-hint { font-size: 12px; font-style: italic; color: #a39680; margin-top: 4px; }
+.bounty.struck h3,
+.bounty.struck p { text-decoration: line-through; text-decoration-color: rgba(122, 47, 20, 0.7); }
+.bounty.struck { opacity: 0.7; }
+.bounty-acts { display: flex; gap: 8px; margin-top: 8px; }
+.board-card button.approve {
+  font-family: inherit;
+  font-size: 13px;
+  background: #b8552f;
+  border: 1px solid #b8552f;
+  border-radius: 3px;
+  color: #f4ede2;
+  padding: 3px 12px;
+  cursor: pointer;
+}
+.board-card button.approve:hover { background: #9a4526; }
+.board-card button.quiet {
+  font-family: inherit;
+  font-size: 13px;
+  background: transparent;
+  border: 1px solid #c9bda4;
+  border-radius: 3px;
+  color: #8a7a5f;
+  padding: 3px 12px;
+  cursor: pointer;
+}
+.board-card button.quiet:hover { border-color: #8a7a5f; color: #5a4632; }
+.bounty-form {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  border-top: 2px solid #c9bda4;
+  padding-top: 12px;
+  margin-top: 6px;
+}
+.bounty-form input,
+.bounty-form textarea {
+  font-family: inherit;
+  font-size: 14px;
+  padding: 6px 8px;
+  border: 1px solid #c9bda4;
+  background: #fff;
+}
+.bounty-form textarea { min-height: 60px; resize: vertical; font-style: italic; }
+.char-count { align-self: flex-end; font-size: 11px; color: #a39680; margin-top: -4px; }
+.char-count-low { color: #b8552f; font-weight: bold; }
+.bounty-form button {
+  align-self: flex-start;
+  font-family: inherit;
+  font-size: 14px;
+  background: #b8552f;
+  border: none;
+  border-radius: 3px;
+  color: #f4ede2;
+  padding: 6px 16px;
+  cursor: pointer;
+}
+.bounty-form button:hover { background: #9a4526; }
+.board-close { align-self: flex-end; }
 
 /* first-act nudge on an empty world */
 .map-hint {

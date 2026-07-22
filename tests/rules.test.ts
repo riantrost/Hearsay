@@ -14,6 +14,7 @@ import {
   approveMember,
   canEditTestimony,
   declineMember,
+  eventParticipants,
   promoteMark,
   revealPin,
   rotateJoinCode,
@@ -22,6 +23,13 @@ import {
   visibleData,
   writeTestimony,
 } from '../src/mutations';
+
+/** A late join, as the server mints it: a fresh pending member appended to the roster. */
+function seatLatecomer(data: CampaignData, name: string): string {
+  const id = `m${name.toLowerCase()}`;
+  data.members.push({ id, campaignId: data.campaign.id, name, role: 'player', status: 'pending' });
+  return id;
+}
 
 let data: CampaignData;
 
@@ -135,12 +143,27 @@ describe('canon acts', () => {
     const pin = addPin(data, 0.5, 0.5, 'The Crossroads');
     const event = addEvent(data, pin.id, 'first blood at the crossroads');
     expect(event.session).toBe(data.campaign.currentSession);
-    expect(event.participantIds).toEqual(data.members.map((m) => m.id));
+    // an open-table event stores no roster snapshot; the whole table resolves live
+    expect(event.participantIds).toEqual([]);
+    expect(eventParticipants(data, event)).toEqual(data.members.map((m) => m.id));
   });
 
-  it('only participants can testify', () => {
+  it('opens an event to a member who joins after it dropped (the late-joiner fix)', () => {
+    // the common first-night order: the owner seeds the world, then a player arrives
+    const pin = addPin(data, 0.4, 0.4, 'The Tollgate');
+    const event = addEvent(data, pin.id, 'the crews forced the gate');
+    const late = seatLatecomer(data, 'Latecomer');
+    expect(eventParticipants(data, event)).toContain(late);
+    const entry = writeTestimony(data, event.id, late, 'I reached the gate late, but I was there');
+    expect(entry.memberId).toBe(late);
+  });
+
+  it('honors an explicit participant subset as owner-scoped — latecomers stay out', () => {
     const event = addEvent(data, 'p4', 'a private duel', ['m2']);
     expect(() => writeTestimony(data, event.id, 'm3', 'I was not there')).toThrow(/participant/);
+    const late = seatLatecomer(data, 'Bystander');
+    expect(eventParticipants(data, event)).toEqual(['m2']);
+    expect(() => writeTestimony(data, event.id, late, 'let me in')).toThrow(/participant/);
   });
 
   it('refuses canon aimed at nothing — no event without a pin, no unknown participants', () => {

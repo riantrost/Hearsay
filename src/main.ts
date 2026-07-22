@@ -4,7 +4,7 @@
 // membership proposals and rotates the join code.
 
 import './style.css';
-import { fetchAuthConfig, postGoogleLink, postGoogleRecover } from './api';
+import { ApiError, fetchAuthConfig, postGoogleLink, postGoogleRecover } from './api';
 import { ApiStore } from './apiStore';
 import { renderLanding } from './landing';
 import { renderMap } from './map/render';
@@ -70,9 +70,12 @@ async function boot(): Promise<void> {
   try {
     store = await ApiStore.boot(seat);
   } catch (e) {
-    // the seat no longer answers (declined, or the table is gone): drop this
-    // chair and let the front door offer whatever tables remain
-    removeSeat(seat.campaignId);
+    // drop the chair only when the seat is genuinely gone — declined, wiped,
+    // or its token dead (401/403/404). A transient failure (server blip,
+    // offline) must not evict a good seat: it keeps its place in the picker,
+    // and the front door shows the error so the reader can retry
+    const seatIsGone = e instanceof ApiError && [401, 403, 404].includes(e.status);
+    if (seatIsGone) removeSeat(seat.campaignId);
     showFrontDoor(e instanceof Error ? e.message : String(e));
     return;
   }
@@ -145,6 +148,20 @@ function renderTable(store: ApiStore, googleOn: boolean): void {
         <button class="help-close">got it</button>
       </div>
     </div>
+    <button class="board-btn" hidden></button>
+    <div class="board-overlay" hidden>
+      <div class="board-card">
+        <h2>The bounty board</h2>
+        <div class="board-list"></div>
+        <form class="bounty-form">
+          <input name="target" placeholder="the quarry — who or what" required maxlength="60" />
+          <textarea name="reason" placeholder="the grievance and the promise, in your own words" required maxlength="280"></textarea>
+          <span class="char-count"></span>
+          <button>swear it</button>
+        </form>
+        <button class="board-close quiet">back to the map</button>
+      </div>
+    </div>
     <div class="map-hint" hidden>name your first place — press ＋ Pin, then tap the map</div>
     <div class="placebar" hidden>
       <span class="placebar-dot"></span>
@@ -181,11 +198,19 @@ function renderTable(store: ApiStore, googleOn: boolean): void {
   const helpBtn = app.querySelector<HTMLButtonElement>('.help-btn')!;
   const helpOverlay = app.querySelector<HTMLElement>('.help-overlay')!;
   const mapHint = app.querySelector<HTMLElement>('.map-hint')!;
+  const boardBtn = app.querySelector<HTMLButtonElement>('.board-btn')!;
+  const boardOverlay = app.querySelector<HTMLElement>('.board-overlay')!;
+  const boardList = app.querySelector<HTMLElement>('.board-list')!;
+  const bountyForm = app.querySelector<HTMLFormElement>('.bounty-form')!;
 
   let session = store.data.campaign.currentSession;
   let selectedPinId: string | null = null;
   // the scrubber sleeps as a pill until someone deliberately opens the past
   let scrubberOpen = false;
+  // the identity panel likewise: a name until reached for, admin on demand
+  let identityOpen = false;
+  // ...and the bounty board, a pill until someone reads the wall
+  let boardOpen = false;
   // dropping a pin is a deliberate act, never a byproduct of touching the map:
   // the owner arms placement, and the *next* map tap places, then disarms
   let placing = false;
@@ -266,6 +291,7 @@ function renderTable(store: ApiStore, googleOn: boolean): void {
         <li><b>Stage in secret</b> preps a place only you can see; a <b>reveal</b> brings it to the table as a timeline event.</li>
         <li><b>Begin session</b> advances the campaign clock. Testimony on past sessions closes once the new session's first event lands.</li>
         <li>Share the <b>join code</b> freely — joiners write immediately, but their words reach the table only after you approve them.</li>
+        <li>The <b>bounty board</b> collects players' sworn revenge — you nail proposals up, and strike them settled.</li>
         <li>Once history spans sessions, the <b>session pill</b> (bottom) scrubs the map back through time.</li>
       </ul>`
     : `<ul>
@@ -274,6 +300,7 @@ function renderTable(store: ApiStore, googleOn: boolean): void {
         <li>You can <b>amend</b> your entry until the next session begins — then it closes for good.</li>
         <li><b>Scrawl a mark</b>: one short line from your testimony left as graffiti on the place, unattributed at a glance.</li>
         <li>Hollow pips on a pin are <b>voices still missing</b> from its latest events.</li>
+        <li>Killed? Wronged? <b>Swear a bounty</b> on the board — the owner nails it up for the table to read.</li>
         <li>Once history spans sessions, the <b>session pill</b> (bottom) scrubs the map back through time.</li>
       </ul>`;
   helpBtn.addEventListener('click', () => {
@@ -289,62 +316,155 @@ function renderTable(store: ApiStore, googleOn: boolean): void {
     render();
   });
 
+  // --- the bounty board ---
+
+  boardBtn.addEventListener('click', () => {
+    boardOpen = true;
+    render();
+  });
+  boardOverlay.addEventListener('click', (ev) => {
+    const t = ev.target as Element;
+    if (t === boardOverlay || t.closest('.board-close')) {
+      boardOpen = false;
+      render();
+    }
+  });
+  // the grievance is hard-capped (a poster, not a saga); a live counter makes
+  // the wall visible while writing, since the placeholder is long gone by then
+  const reasonField = bountyForm.querySelector<HTMLTextAreaElement>('[name=reason]')!;
+  const reasonCount = bountyForm.querySelector<HTMLElement>('.char-count')!;
+  const updateCount = (): void => {
+    const left = reasonField.maxLength - reasonField.value.length;
+    reasonCount.textContent = `${left} left`;
+    reasonCount.classList.toggle('char-count-low', left <= 20);
+  };
+  reasonField.addEventListener('input', updateCount);
+  updateCount();
+  bountyForm.addEventListener('submit', (ev) => {
+    ev.preventDefault();
+    const fd = new FormData(bountyForm);
+    store
+      .addBounty(String(fd.get('target') ?? ''), String(fd.get('reason') ?? ''))
+      .then(() => {
+        bountyForm.reset();
+        updateCount();
+      })
+      .catch(oops);
+  });
+
+  function bountyEntry(b: (typeof store.data.bounties)[number]): HTMLElement {
+    const poster = store.data.members.find((m) => m.id === b.postedBy);
+    const el = document.createElement('article');
+    el.className = `bounty ${b.status}`;
+    const target = document.createElement('h3');
+    target.textContent = b.target;
+    const reason = document.createElement('p');
+    reason.textContent = b.reason;
+    const byline = document.createElement('div');
+    byline.className = 'bounty-byline';
+    byline.textContent =
+      b.status === 'struck'
+        ? `sworn by ${poster?.name ?? '?'} · session ${b.session} — settled, session ${b.struckSession}`
+        : `sworn by ${poster?.name ?? '?'} · session ${b.session}`;
+    el.append(target, reason, byline);
+    if (b.status === 'proposed') {
+      if (isOwner()) {
+        const acts = document.createElement('div');
+        acts.className = 'bounty-acts';
+        const approve = document.createElement('button');
+        approve.className = 'approve';
+        approve.textContent = 'nail it up';
+        approve.addEventListener('click', () => store.approveBounty(b.id).catch(oops));
+        const decline = document.createElement('button');
+        decline.className = 'quiet';
+        decline.textContent = 'refuse';
+        decline.addEventListener('click', () => {
+          if (confirm('Refuse this bounty? Paper that never reached the board is gone.')) {
+            store.declineBounty(b.id).catch(oops);
+          }
+        });
+        acts.append(approve, decline);
+        el.appendChild(acts);
+      } else {
+        const hint = document.createElement('div');
+        hint.className = 'bounty-hint';
+        hint.textContent = 'awaiting the owner’s nail — only you and the owner see this';
+        el.appendChild(hint);
+      }
+    } else if (b.status === 'posted' && isOwner()) {
+      const acts = document.createElement('div');
+      acts.className = 'bounty-acts';
+      const strike = document.createElement('button');
+      strike.className = 'quiet';
+      strike.textContent = 'strike it settled';
+      strike.addEventListener('click', () => store.strikeBounty(b.id).catch(oops));
+      acts.appendChild(strike);
+      el.appendChild(acts);
+    }
+    return el;
+  }
+
+  function renderBoard(): void {
+    // an in-flight draft must survive the poll's wholesale rebuild
+    const draftTarget = bountyForm.querySelector<HTMLInputElement>('[name=target]')!.value;
+    const draftReason = bountyForm.querySelector<HTMLTextAreaElement>('[name=reason]')!.value;
+    const focused = document.activeElement instanceof HTMLElement ? document.activeElement.getAttribute('name') : null;
+
+    const bounties = store.data.bounties;
+    const groups: [string, (typeof bounties)] [] = [
+      ['awaiting the nail', bounties.filter((b) => b.status === 'proposed')],
+      ['on the board', [...bounties.filter((b) => b.status === 'posted')].sort((a, z) => z.session - a.session)],
+      ['settled scores', [...bounties.filter((b) => b.status === 'struck')].sort((a, z) => (z.struckSession ?? 0) - (a.struckSession ?? 0))],
+    ];
+    const frag = document.createDocumentFragment();
+    for (const [title, list] of groups) {
+      if (list.length === 0) continue;
+      const h = document.createElement('div');
+      h.className = 'board-group';
+      h.textContent = title;
+      frag.appendChild(h);
+      for (const b of list) frag.appendChild(bountyEntry(b));
+    }
+    if (bounties.length === 0) {
+      const empty = document.createElement('p');
+      empty.className = 'board-empty';
+      empty.textContent = 'no scores to settle — yet. The board takes all comers.';
+      frag.appendChild(empty);
+    }
+    boardList.replaceChildren(frag);
+
+    bountyForm.querySelector<HTMLInputElement>('[name=target]')!.value = draftTarget;
+    bountyForm.querySelector<HTMLTextAreaElement>('[name=reason]')!.value = draftReason;
+    if (focused) bountyForm.querySelector<HTMLElement>(`[name=${focused}]`)?.focus();
+  }
+
   function renderIdentity(): void {
     const me = store.me;
     const frag = document.createDocumentFragment();
 
-    const seatLine = document.createElement('div');
-    seatLine.className = 'seat-line';
-    const roleTag = me?.role === 'owner' ? ' (owner)' : me?.status === 'pending' ? ' (pending)' : '';
-    seatLine.textContent = `at the table as ${me?.name ?? '?'}${roleTag}`;
-    // one browser can hold many chairs: the front door is reachable without
-    // giving this one up
-    const tables = document.createElement('button');
-    tables.className = 'tables';
-    tables.textContent = 'tables';
-    tables.title = 'switch tables or found/join another';
-    tables.addEventListener('click', () => showFrontDoor());
-    const leave = document.createElement('button');
-    leave.className = 'leave';
-    leave.textContent = 'leave';
-    leave.addEventListener('click', () => {
-      if (confirm('Forget this table on this device? Rejoin needs the code or a reclaim link from the owner.')) {
-        removeSeat(store.seat.campaignId);
-        void boot();
-      }
+    // the panel sleeps as a name; everything administrative waits behind the
+    // caret, so the map keeps the corner. Pending join requests surface as a
+    // count on the caret so the owner never misses a knock.
+    const waiting = isOwner() ? store.data.members.filter((x) => x.status === 'pending').length : 0;
+    const head = document.createElement('div');
+    head.className = 'identity-head';
+    const name = document.createElement('span');
+    name.className = 'seat-name';
+    const roleTag = me?.role === 'owner' ? ' — owner' : me?.status === 'pending' ? ' — pending' : '';
+    name.textContent = `${me?.name ?? '?'}${roleTag}`;
+    const caret = document.createElement('button');
+    caret.className = 'quiet identity-caret';
+    caret.title = identityOpen ? 'tuck the table details away' : 'table details';
+    caret.textContent = identityOpen ? 'close ▴' : waiting > 0 ? `table ▾ · ${waiting} waiting` : 'table ▾';
+    caret.classList.toggle('attention', !identityOpen && waiting > 0);
+    caret.addEventListener('click', () => {
+      identityOpen = !identityOpen;
+      render();
     });
-    // self-serve device handoff: any member can mint their own seat link (the
-    // owner also has one in the roster below, so keep the line uncluttered)
-    if (!isOwner() && me) {
-      const selfLink = document.createElement('button');
-      selfLink.className = 'reclaim';
-      selfLink.textContent = 'seat link';
-      selfLink.title = 'open your seat on another device';
-      selfLink.addEventListener('click', () => void reclaimFor(me.id, me.name));
-      seatLine.appendChild(selfLink);
-    }
-    seatLine.append(tables, leave);
-    frag.appendChild(seatLine);
+    head.append(name, caret);
+    frag.appendChild(head);
 
-    // the recovery thread: one tap ties this seat to a Google account, so a
-    // lost phone or a new device can find it with nothing else in hand
-    if (googleOn) {
-      const backup = document.createElement('div');
-      backup.className = 'backup-row';
-      const linked = loadSeats().find((s) => s.campaignId === store.seat.campaignId)?.google;
-      if (linked) {
-        backup.textContent = `seat backed up to ${linked}`;
-      } else {
-        backup.textContent = 'lose your phone, lose your seat — ';
-        const link = document.createElement('button');
-        link.className = 'backup';
-        link.textContent = 'back up with Google';
-        link.addEventListener('click', () => startGoogleFlow('link'));
-        backup.appendChild(link);
-      }
-      frag.appendChild(backup);
-    }
-
+    // a pending seat's status is not admin detail — it stays in view
     if (me?.status === 'pending') {
       const hint = document.createElement('div');
       hint.className = 'pending-hint';
@@ -352,51 +472,108 @@ function renderTable(store: ApiStore, googleOn: boolean): void {
       frag.appendChild(hint);
     }
 
-    if (isOwner()) {
-      const codeRow = document.createElement('div');
-      codeRow.className = 'code-row';
-      codeRow.textContent = `join code: ${store.data.campaign.joinCode} `;
-      const rotate = document.createElement('button');
-      rotate.textContent = 'rotate';
-      rotate.title = 'mint a fresh code; the old one stops working';
-      rotate.addEventListener('click', () => store.rotateCode().catch(oops));
-      codeRow.appendChild(rotate);
-      frag.appendChild(codeRow);
+    if (identityOpen) {
+      const body = document.createElement('div');
+      body.className = 'identity-body';
 
-      for (const m of store.data.members.filter((x) => x.status === 'pending')) {
-        const row = document.createElement('div');
-        row.className = 'pending-row';
-        row.textContent = `${m.name} asks to join `;
-        const approve = document.createElement('button');
-        approve.textContent = 'approve';
-        approve.addEventListener('click', () => store.approveMember(m.id).catch(oops));
-        const decline = document.createElement('button');
-        decline.className = 'decline';
-        decline.textContent = 'decline';
-        decline.addEventListener('click', () => {
-          if (confirm(`Decline ${m.name}? Their seat and their words are removed.`)) {
-            store.declineMember(m.id).catch(oops);
-          }
-        });
-        row.append(approve, decline);
-        frag.appendChild(row);
+      // the recovery thread: one tap ties this seat to a Google account, so a
+      // lost phone or a new device can find it with nothing else in hand
+      if (googleOn) {
+        const backup = document.createElement('div');
+        backup.className = 'identity-row';
+        const linked = loadSeats().find((s) => s.campaignId === store.seat.campaignId)?.google;
+        if (linked) {
+          backup.textContent = `backed up to ${linked}`;
+        } else {
+          const link = document.createElement('button');
+          link.className = 'quiet';
+          link.textContent = 'back up with Google';
+          link.title = 'a lost phone can find this seat again';
+          link.addEventListener('click', () => startGoogleFlow('link'));
+          backup.appendChild(link);
+        }
+        body.appendChild(backup);
       }
 
-      // the roster: seated members, each re-seatable on a new device. A lost
-      // phone (or Safari evicting the seat) needn't orphan anyone's testimony —
-      // the owner hands back the same chair, no new membership, no re-approval.
-      for (const m of store.data.members.filter((x) => x.status === 'active')) {
+      if (isOwner()) {
+        const codeRow = document.createElement('div');
+        codeRow.className = 'identity-row code-row';
+        codeRow.textContent = `join code ${store.data.campaign.joinCode} `;
+        const rotate = document.createElement('button');
+        rotate.className = 'quiet';
+        rotate.textContent = 'rotate';
+        rotate.title = 'mint a fresh code; the old one stops working';
+        rotate.addEventListener('click', () => store.rotateCode().catch(oops));
+        codeRow.appendChild(rotate);
+        body.appendChild(codeRow);
+
+        for (const m of store.data.members.filter((x) => x.status === 'pending')) {
+          const row = document.createElement('div');
+          row.className = 'identity-row pending-row';
+          row.textContent = `${m.name} asks to join `;
+          const approve = document.createElement('button');
+          approve.className = 'approve';
+          approve.textContent = 'approve';
+          approve.addEventListener('click', () => store.approveMember(m.id).catch(oops));
+          const decline = document.createElement('button');
+          decline.className = 'quiet';
+          decline.textContent = 'decline';
+          decline.addEventListener('click', () => {
+            if (confirm(`Decline ${m.name}? Their seat and their words are removed.`)) {
+              store.declineMember(m.id).catch(oops);
+            }
+          });
+          row.append(approve, decline);
+          body.appendChild(row);
+        }
+
+        // the roster: seated members, each re-seatable on a new device. A lost
+        // phone (or Safari evicting the seat) needn't orphan anyone's testimony —
+        // the owner hands back the same chair, no new membership, no re-approval.
+        for (const m of store.data.members.filter((x) => x.status === 'active')) {
+          const row = document.createElement('div');
+          row.className = 'identity-row member-row';
+          row.textContent = `${m.name}${m.role === 'owner' ? ' — owner' : ''}${m.id === viewerId ? ' (you)' : ''} `;
+          const reclaim = document.createElement('button');
+          reclaim.className = 'quiet';
+          reclaim.textContent = 'seat link';
+          reclaim.title = m.id === viewerId ? 'open your seat on another device' : `re-seat ${m.name} on a new device`;
+          reclaim.addEventListener('click', () => void reclaimFor(m.id, m.name));
+          row.appendChild(reclaim);
+          body.appendChild(row);
+        }
+      } else if (me) {
+        // self-serve device handoff: a player mints their own seat link
         const row = document.createElement('div');
-        row.className = 'member-row';
-        row.textContent = `${m.name}${m.role === 'owner' ? ' (owner)' : ''}${m.id === viewerId ? ' — you' : ''} `;
-        const reclaim = document.createElement('button');
-        reclaim.className = 'reclaim';
-        reclaim.textContent = 'seat link';
-        reclaim.title = m.id === viewerId ? 'open your seat on another device' : `re-seat ${m.name} on a new device`;
-        reclaim.addEventListener('click', () => void reclaimFor(m.id, m.name));
-        row.appendChild(reclaim);
-        frag.appendChild(row);
+        row.className = 'identity-row';
+        const selfLink = document.createElement('button');
+        selfLink.className = 'quiet';
+        selfLink.textContent = 'open this seat on another device';
+        selfLink.addEventListener('click', () => void reclaimFor(me.id, me.name));
+        row.appendChild(selfLink);
+        body.appendChild(row);
       }
+
+      // one browser holds many chairs: the front door never costs this one
+      const foot = document.createElement('div');
+      foot.className = 'identity-row identity-foot';
+      const tables = document.createElement('button');
+      tables.className = 'quiet';
+      tables.textContent = 'tables';
+      tables.title = 'switch tables or found/join another';
+      tables.addEventListener('click', () => showFrontDoor());
+      const leave = document.createElement('button');
+      leave.className = 'quiet';
+      leave.textContent = 'leave';
+      leave.addEventListener('click', () => {
+        if (confirm('Forget this table on this device? Rejoin needs the code or a reclaim link from the owner.')) {
+          removeSeat(store.seat.campaignId);
+          void boot();
+        }
+      });
+      foot.append(tables, leave);
+      body.appendChild(foot);
+      frag.appendChild(body);
     }
     identity.replaceChildren(frag);
   }
@@ -412,6 +589,15 @@ function renderTable(store: ApiStore, googleOn: boolean): void {
     });
     viewport.apply();
     renderIdentity();
+    // the bounty board: a pill until read; posted count on the label, and an
+    // ember nudge for the owner while proposals wait for the nail
+    const posted = store.data.bounties.filter((b) => b.status === 'posted').length;
+    const proposals = store.data.bounties.filter((b) => b.status === 'proposed').length;
+    boardBtn.hidden = false;
+    boardBtn.textContent = posted > 0 ? `☠ bounties · ${posted}` : '☠ bounties';
+    boardBtn.classList.toggle('attention', isOwner() && proposals > 0);
+    boardOverlay.hidden = !boardOpen;
+    if (boardOpen) renderBoard();
     // leaving the present (scrubbing back) or a non-owner seat disarms placement
     if (placing && !canPlace()) placing = false;
     placeBtn.hidden = !canPlace();
@@ -538,6 +724,12 @@ function renderTable(store: ApiStore, googleOn: boolean): void {
   });
 
   advanceBtn.addEventListener('click', () => {
+    // moving the table's clock is one always-visible tap with no rewind: on a
+    // phone it's a fat-finger away at all times, so confirm the consequence
+    // (advancing alone closes nothing — the previous session's grace window
+    // shuts when the first event lands in the new one)
+    const current = store.data.campaign.currentSession;
+    if (!confirm(`Begin session ${current + 1}? Session ${current}'s open testimony closes once the first event lands in the new one — and the clock doesn't turn back.`)) return;
     store
       .advanceSession()
       .then((s) => {

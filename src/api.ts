@@ -3,7 +3,7 @@
 // enforced server-side; this file only moves requests and surfaces the
 // server's refusals as thrown errors, message intact.
 
-import type { Campaign, CampaignData, Member, Pin, SiteEvent, Testimony } from './model';
+import type { Bounty, Campaign, CampaignData, Member, Pin, SiteEvent, Testimony } from './model';
 import type { Seat } from './seat';
 
 export class ApiError extends Error {
@@ -79,8 +79,16 @@ export async function postPinReveal(seat: Seat, pinId: string, canonLine: string
   };
 }
 
-export async function postEvent(seat: Seat, pinId: string, canonLine: string, atmosphere?: string): Promise<SiteEvent> {
-  return (await (await post(seat, '/events', { pinId, canonLine, atmosphere })).json()) as SiteEvent;
+export async function postEvent(
+  seat: Seat,
+  pinId: string,
+  canonLine: string,
+  atmosphere?: string,
+  participantIds?: string[],
+): Promise<SiteEvent> {
+  // an omitted participantIds means the whole table (resolved live); an
+  // explicit list scopes the event to a subset (undefined drops out of the body)
+  return (await (await post(seat, '/events', { pinId, canonLine, atmosphere, participantIds })).json()) as SiteEvent;
 }
 
 export async function postSession(seat: Seat): Promise<number> {
@@ -98,6 +106,14 @@ export async function postMark(seat: Seat, testimonyId: string, text: string): P
 
 export async function postMemberAction(seat: Seat, memberId: string, action: 'approve' | 'decline'): Promise<void> {
   await post(seat, `/members/${encodeURIComponent(memberId)}`, { action });
+}
+
+export async function postBounty(seat: Seat, target: string, reason: string): Promise<Bounty> {
+  return (await (await post(seat, '/bounties', { target, reason })).json()) as Bounty;
+}
+
+export async function postBountyAction(seat: Seat, bountyId: string, action: 'approve' | 'decline' | 'strike'): Promise<Bounty> {
+  return (await (await post(seat, `/bounties/${encodeURIComponent(bountyId)}`, { action })).json()) as Bounty;
 }
 
 // --- the Google recovery thread (docs/decisions.md: a thread, never a wall) ---

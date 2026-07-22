@@ -5,7 +5,7 @@
 // freshness discipline (focus refetch, polling) layers on in step 4.
 
 import * as api from './api';
-import type { CampaignData, Member, Pin, SiteEvent, Testimony } from './model';
+import type { Bounty, CampaignData, Member, Pin, SiteEvent, Testimony } from './model';
 import { canEditTestimony } from './mutations';
 import type { Seat } from './seat';
 
@@ -127,8 +127,8 @@ export class ApiStore {
     return pin;
   }
 
-  async addEvent(pinId: string, canonLine: string, atmosphere?: string): Promise<SiteEvent> {
-    const event = await api.postEvent(this.seat, pinId, canonLine, atmosphere);
+  async addEvent(pinId: string, canonLine: string, atmosphere?: string, participantIds?: string[]): Promise<SiteEvent> {
+    const event = await api.postEvent(this.seat, pinId, canonLine, atmosphere, participantIds);
     this.data.events.push(event);
     this.noteWrite(`e:${event.id}`, (d) => ApiStore.upsert(d.events, event));
     this.notify();
@@ -163,6 +163,43 @@ export class ApiStore {
     const entry = await api.postMark(this.seat, testimonyId, text);
     this.upsertTestimony(entry);
     return entry;
+  }
+
+  // --- the bounty board (member posts; owner nails, refuses, strikes) ---
+
+  private upsertBounty(bounty: Bounty): void {
+    ApiStore.upsert(this.data.bounties, bounty);
+    this.noteWrite(`b:${bounty.id}`, (d) => ApiStore.upsert(d.bounties, bounty));
+    this.notify();
+  }
+
+  async addBounty(target: string, reason: string): Promise<Bounty> {
+    const bounty = await api.postBounty(this.seat, target, reason);
+    this.upsertBounty(bounty);
+    return bounty;
+  }
+
+  async approveBounty(bountyId: string): Promise<Bounty> {
+    const bounty = await api.postBountyAction(this.seat, bountyId, 'approve');
+    this.upsertBounty(bounty);
+    return bounty;
+  }
+
+  /** Refused paper leaves no record — the deletion cascades, so refetch. */
+  async declineBounty(bountyId: string): Promise<void> {
+    await api.postBountyAction(this.seat, bountyId, 'decline');
+    this.data.bounties = this.data.bounties.filter((b) => b.id !== bountyId);
+    // a laggy snapshot must not resurrect refused paper
+    this.noteWrite(`b:${bountyId}`, (d) => {
+      d.bounties = d.bounties.filter((b) => b.id !== bountyId);
+    });
+    this.notify();
+  }
+
+  async strikeBounty(bountyId: string): Promise<Bounty> {
+    const bounty = await api.postBountyAction(this.seat, bountyId, 'strike');
+    this.upsertBounty(bounty);
+    return bounty;
   }
 
   // --- membership acts (owner) — decline cascades, so refetch wholesale ---

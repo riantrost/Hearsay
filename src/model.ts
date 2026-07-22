@@ -71,9 +71,39 @@ export interface Testimony {
   markText?: string;
 }
 
+/**
+ * A bounty: revenge posted to the campaign's board. Player-proposed,
+ * owner-ratified (the proposal pattern extended to the board — nailing
+ * paper to world furniture is a canon act). The target is free text, so a
+ * rival warband, an NPC, or the thing under the fen are all valid quarry;
+ * any reward lives inside the words, never as modeled currency.
+ */
+export interface Bounty {
+  id: string;
+  campaignId: string;
+  /** The member whose revenge this is — bounties are signed. */
+  postedBy: string;
+  /** Who or what the bounty names. Free text; the app models no rules. */
+  target: string;
+  /** The grievance and the promise, in the poster's own voice. */
+  reason: string;
+  /** Session the bounty was posted under — sessions are the clock. */
+  session: number;
+  /**
+   * proposed: visible only to poster and owner, awaiting the owner's nail.
+   * posted: on the board for the whole table.
+   * struck: settled — kept on the board, crossed out, not erased.
+   */
+  status: 'proposed' | 'posted' | 'struck';
+  /** Session the owner struck it settled, once status is 'struck'. */
+  struckSession?: number;
+}
+
 export const MARK_MAX_CHARS = 100;
 export const MAX_TESTIMONY_CHARS = 5000;
 export const MAX_ATMOSPHERE_CHARS = 1200;
+export const MAX_BOUNTY_TARGET_CHARS = 60;
+export const MAX_BOUNTY_REASON_CHARS = 280;
 
 export interface CampaignData {
   campaign: Campaign;
@@ -81,4 +111,5 @@ export interface CampaignData {
   pins: Pin[];
   events: SiteEvent[];
   testimony: Testimony[];
+  bounties: Bounty[];
 }
