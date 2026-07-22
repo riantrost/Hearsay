@@ -18,11 +18,25 @@ import { writeFileSync } from 'node:fs';
 const CAMPAIGN_ID = process.argv[2] ?? 'c13d58dac4aa5';
 const OUT = process.argv[3] ?? 'example-table.sql';
 
-const kv = (args) =>
-  execFileSync('npx', ['wrangler', 'kv', ...args, '--binding', 'HEARSAY', '--remote'], {
-    encoding: 'utf8',
-    shell: process.platform === 'win32',
-  });
+// One wrangler process per KV op — and the remote API returns the occasional
+// transient 401. A single blip must not abort a run that's copying dozens of
+// keys, so retry with a short backoff before giving up for real.
+const kv = (args, attempt = 1) => {
+  try {
+    return execFileSync('npx', ['wrangler', 'kv', ...args, '--binding', 'HEARSAY', '--remote'], {
+      encoding: 'utf8',
+      shell: process.platform === 'win32',
+      stdio: ['ignore', 'pipe', 'pipe'],
+    });
+  } catch (e) {
+    const transient = /401|429|5\d\d|fetch failed|ECONN|ETIMEDOUT/i.test(String(e.stderr ?? e.message ?? ''));
+    if (transient && attempt <= 5) {
+      execFileSync(process.execPath, ['-e', `setTimeout(()=>{}, ${attempt * 1500})`]); // backoff
+      return kv(args, attempt + 1);
+    }
+    throw e;
+  }
+};
 
 const listKeys = (prefix) => {
   const out = kv(['key', 'list', '--prefix', prefix]);
@@ -37,7 +51,10 @@ const q = (v) => (v === undefined || v === null ? 'NULL' : typeof v === 'number'
 
 console.log(`reading c:${CAMPAIGN_ID}:* from REMOTE KV …`);
 const names = listKeys(`c:${CAMPAIGN_ID}:`);
-const stmts = [];
+// Buckets by table — assembled in FK dependency order at the end, since KV
+// list returns keys alphabetically (bounties before campaign) and a child
+// row inserted before its parent trips the foreign-key constraint.
+const bucket = { campaigns: [], members: [], pins: [], events: [], testimony: [], bounties: [], join_codes: [], tokens: [] };
 const counts = { campaign: 0, members: 0, pins: 0, events: 0, testimony: 0, bounties: 0, tokens: 0, codes: 0 };
 
 for (const name of names) {
@@ -45,34 +62,34 @@ for (const name of names) {
   const r = getJson(name);
   if (kind === 'campaign') {
     counts.campaign++;
-    stmts.push(
+    bucket.campaigns.push(
       `INSERT OR REPLACE INTO campaigns (id, name, map_w, map_h, current_session, join_code) VALUES (${q(r.id)}, ${q(r.name)}, ${q(r.mapW)}, ${q(r.mapH)}, ${q(r.currentSession)}, ${q(r.joinCode)});`,
     );
     counts.codes++;
-    stmts.push(`INSERT OR REPLACE INTO join_codes (code, campaign_id) VALUES (${q(r.joinCode.toUpperCase())}, ${q(r.id)});`);
+    bucket.join_codes.push(`INSERT OR REPLACE INTO join_codes (code, campaign_id) VALUES (${q(r.joinCode.toUpperCase())}, ${q(r.id)});`);
   } else if (kind === 'm') {
     counts.members++;
-    stmts.push(
+    bucket.members.push(
       `INSERT OR REPLACE INTO members (id, campaign_id, name, role, status) VALUES (${q(r.id)}, ${q(r.campaignId)}, ${q(r.name)}, ${q(r.role)}, ${q(r.status)});`,
     );
   } else if (kind === 'p') {
     counts.pins++;
-    stmts.push(
+    bucket.pins.push(
       `INSERT OR REPLACE INTO pins (id, campaign_id, x, y, name, hidden, hidden_until_session) VALUES (${q(r.id)}, ${q(r.campaignId)}, ${q(r.x)}, ${q(r.y)}, ${q(r.name)}, ${r.hidden ? 1 : 0}, ${q(r.hiddenUntilSession)});`,
     );
   } else if (kind === 'e') {
     counts.events++;
-    stmts.push(
+    bucket.events.push(
       `INSERT OR REPLACE INTO events (id, campaign_id, pin_id, session, canon_line, atmosphere, participant_ids) VALUES (${q(r.id)}, ${q(CAMPAIGN_ID)}, ${q(r.pinId)}, ${q(r.session)}, ${q(r.canonLine)}, ${q(r.atmosphere)}, ${q(JSON.stringify(r.participantIds ?? []))});`,
     );
   } else if (kind === 't') {
     counts.testimony++;
-    stmts.push(
+    bucket.testimony.push(
       `INSERT OR REPLACE INTO testimony (id, campaign_id, event_id, member_id, session, text, mark_text) VALUES (${q(r.id)}, ${q(CAMPAIGN_ID)}, ${q(r.eventId)}, ${q(r.memberId)}, ${q(r.session)}, ${q(r.text)}, ${q(r.markText)});`,
     );
   } else if (kind === 'b') {
     counts.bounties++;
-    stmts.push(
+    bucket.bounties.push(
       `INSERT OR REPLACE INTO bounties (id, campaign_id, posted_by, target, reason, session, status, struck_session) VALUES (${q(r.id)}, ${q(r.campaignId)}, ${q(r.postedBy)}, ${q(r.target)}, ${q(r.reason)}, ${q(r.session)}, ${q(r.status)}, ${q(r.struckSession)});`,
     );
   }
@@ -83,7 +100,7 @@ for (const name of listKeys('tok:')) {
   const rec = getJson(name);
   if (rec.campaignId !== CAMPAIGN_ID) continue;
   counts.tokens++;
-  stmts.push(
+  bucket.tokens.push(
     `INSERT OR REPLACE INTO tokens (token, campaign_id, member_id) VALUES (${q(name.slice('tok:'.length))}, ${q(rec.campaignId)}, ${q(rec.memberId)});`,
   );
 }
@@ -94,9 +111,20 @@ for (const name of listKeys('code:')) {
   const rec = getJson(name);
   if (rec.campaignId !== CAMPAIGN_ID) continue;
   counts.codes++;
-  stmts.push(`INSERT OR REPLACE INTO join_codes (code, campaign_id) VALUES (${q(name.slice('code:'.length).toUpperCase())}, ${q(CAMPAIGN_ID)});`);
+  bucket.join_codes.push(`INSERT OR REPLACE INTO join_codes (code, campaign_id) VALUES (${q(name.slice('code:'.length).toUpperCase())}, ${q(CAMPAIGN_ID)});`);
 }
 
+// FK dependency order: campaigns first, then its children, then FK-free doors.
+const stmts = [
+  ...bucket.campaigns,
+  ...bucket.members,
+  ...bucket.pins,
+  ...bucket.events,
+  ...bucket.testimony,
+  ...bucket.bounties,
+  ...bucket.join_codes,
+  ...bucket.tokens,
+];
 writeFileSync(OUT, stmts.join('\n') + '\n');
 console.log(`\nwrote ${stmts.length} statements to ${OUT}`);
 console.log('entity counts (diff these against a post-apply SELECT COUNT):');
