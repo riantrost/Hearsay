@@ -1,13 +1,15 @@
-// The freshness discipline's contracts (roadmap step 4): refresh is quiet
-// when the server has nothing new (no notify, no re-render, no disturbing a
-// half-typed draft), loud when it does, and a refresh that raced a local
-// write loses — the fetched snapshot predates the write.
+// The freshness discipline's contracts: refresh is quiet when the server has
+// nothing new (no notify, no re-render, no disturbing a half-typed draft),
+// loud when it does, and a refresh that raced a local write loses — the
+// fetched snapshot predates the write. The KV era's write-ledger tests died
+// with the ledger itself (D1 reads its own writes); what remains here is
+// plain HTTP-race truth that outlives any storage backend.
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { ApiStore } from '../src/apiStore';
 import { seed } from '../src/data/seed';
 import type { CampaignData } from '../src/model';
 import type { Seat } from '../src/seat';
+import { ApiStore } from '../src/store';
 
 const seat: Seat = { campaignId: 'c1', memberId: 'm1', token: 'tok' };
 
@@ -34,8 +36,11 @@ describe('ApiStore.refresh', () => {
     const store = await ApiStore.boot(seat);
     let notifies = 0;
     store.subscribe(() => notifies++);
+    const before = store.$data.peek();
     await store.refresh();
     expect(notifies).toBe(0);
+    // signal identity untouched: subscribed components saw nothing
+    expect(store.$data.peek()).toBe(before);
   });
 
   it('notifies when the table moved', async () => {
@@ -69,54 +74,34 @@ describe('ApiStore.refresh', () => {
     expect(store.data.testimony.some((t) => t.id === 'tX')).toBe(true);
   });
 
-  // KV's list is eventually consistent: a snapshot fetched *after* a write
-  // can still be missing the written record for up to ~a minute. The store
-  // keeps a ledger of its own recent writes and patches them back in.
-  it('a laggy snapshot cannot un-place a fresh pin', async () => {
+  it('a mutation lands loud: signal identity changes and listeners fire', async () => {
     const store = await ApiStore.boot(seat);
     route = (url, init) => {
       if (init?.method === 'POST' && url.endsWith('/pins')) {
         return { id: 'pX', campaignId: 'c1', x: 0.5, y: 0.5, name: 'New Place' };
       }
-      return structuredClone(seed); // storage lag: pX missing from the snapshot
+      return structuredClone(seed);
     };
-    await store.addPin(0.5, 0.5, 'New Place');
     let notifies = 0;
     store.subscribe(() => notifies++);
-    await store.refresh();
+    const before = store.$data.peek();
+    await store.addPin(0.5, 0.5, 'New Place');
+    expect(notifies).toBe(1);
+    expect(store.$data.peek()).not.toBe(before);
     expect(store.data.pins.some((p) => p.id === 'pX')).toBe(true);
-    expect(notifies).toBe(0); // the patched snapshot matches what we show: quiet
   });
 
-  it('the clock never winds back on a laggy snapshot', async () => {
+  it('a later honest refresh is the truth — no ledger holds stale local state', async () => {
     const store = await ApiStore.boot(seat);
-    const advanced = seed.campaign.currentSession + 1;
     route = (url, init) => {
-      if (init?.method === 'POST' && url.endsWith('/session')) return { currentSession: advanced };
-      return structuredClone(seed); // still says the old session
+      if (init?.method === 'POST' && url.endsWith('/session')) return { currentSession: 9 };
+      return structuredClone(seed); // the server's (consistent) answer
     };
     await store.advanceSession();
+    expect(store.data.campaign.currentSession).toBe(9);
+    // a refresh that started *after* the write reads D1's own-write truth; here
+    // the mock answers with the seed, and the store honestly takes it
     await store.refresh();
-    expect(store.data.campaign.currentSession).toBe(advanced);
-  });
-
-  it('the ledger expires once the storage lag window passes', async () => {
-    vi.useFakeTimers();
-    try {
-      const store = await ApiStore.boot(seat);
-      route = (url, init) => {
-        if (init?.method === 'POST' && url.endsWith('/pins')) {
-          return { id: 'pX', campaignId: 'c1', x: 0.5, y: 0.5, name: 'New Place' };
-        }
-        return structuredClone(seed);
-      };
-      await store.addPin(0.5, 0.5, 'New Place');
-      vi.setSystemTime(Date.now() + 120_000); // well past the lag window
-      await store.refresh();
-      // past the window the server is the truth again, missing record and all
-      expect(store.data.pins.some((p) => p.id === 'pX')).toBe(false);
-    } finally {
-      vi.useRealTimers();
-    }
+    expect(store.data.campaign.currentSession).toBe(seed.campaign.currentSession);
   });
 });

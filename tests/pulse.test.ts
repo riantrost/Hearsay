@@ -5,7 +5,7 @@
 // (V1 requirement 1: recent activity visible on the map at a glance.)
 
 import { describe, expect, it } from 'vitest';
-import { pinPulse, pulseClass } from '../src/map/render';
+import { pinPulse, pulseClass } from '../src/derive';
 import { seed } from '../src/data/seed';
 
 describe('pinPulse', () => {

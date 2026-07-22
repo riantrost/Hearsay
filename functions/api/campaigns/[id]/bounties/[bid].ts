@@ -5,17 +5,7 @@
 // current session — settled, kept, never erased.
 
 import { approveBounty, declineBounty, strikeBounty } from '../../../../../src/mutations';
-import {
-  bountyKey,
-  ensureRecord,
-  mutationError,
-  param,
-  putRecord,
-  readJson,
-  requireOwner,
-  requireSeat,
-  type Env,
-} from '../../../../lib';
+import { deleteBounty, mutationError, param, readJson, requireOwner, requireSeat, saveBounty, type Env } from '../../../../lib';
 
 export const onRequestPost: PagesFunction<Env> = async ({ request, env, params }) => {
   const cid = param(params.id);
@@ -25,24 +15,21 @@ export const onRequestPost: PagesFunction<Env> = async ({ request, env, params }
   const notOwner = requireOwner(seat);
   if (notOwner) return notOwner;
 
-  // a just-posted bounty may lag KV's list — read it directly before refusing
-  await ensureRecord(env, seat.data.bounties, bid, bountyKey(cid, bid));
-
   const body = await readJson<{ action?: unknown }>(request);
   try {
     if (body?.action === 'approve') {
       const bounty = approveBounty(seat.data, bid);
-      await putRecord(env, bountyKey(cid, bounty.id), bounty);
+      await saveBounty(env, bounty);
       return Response.json(bounty);
     }
     if (body?.action === 'decline') {
       const bounty = declineBounty(seat.data, bid);
-      await env.HEARSAY.delete(bountyKey(cid, bounty.id));
+      await deleteBounty(env, bounty.id);
       return Response.json({ declined: bounty.id });
     }
     if (body?.action === 'strike') {
       const bounty = strikeBounty(seat.data, bid);
-      await putRecord(env, bountyKey(cid, bounty.id), bounty);
+      await saveBounty(env, bounty);
       return Response.json(bounty);
     }
     return mutationError(new Error('unknown bounty action'));

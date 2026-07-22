@@ -4,7 +4,7 @@
 
 import type { Member } from '../../src/model';
 import { newId } from '../../src/mutations';
-import { codeKey, err, memberKey, putRecord, readJson, tokenKey, type Env, type TokenRecord } from '../lib';
+import { err, findCampaignByCode, insertToken, readJson, saveMember, type Env } from '../lib';
 
 export const onRequestPost: PagesFunction<Env> = async ({ request, env }) => {
   const body = await readJson<{ code?: unknown; name?: unknown }>(request);
@@ -13,18 +13,18 @@ export const onRequestPost: PagesFunction<Env> = async ({ request, env }) => {
   if (!code) return err(400, 'a join code opens the door');
   if (!name || name.length > 60) return err(400, 'a member needs a name');
 
-  const rec = await env.HEARSAY.get<{ campaignId: string }>(codeKey(code), 'json');
-  if (!rec) return err(404, 'no table answers to this code');
+  const campaignId = await findCampaignByCode(env, code);
+  if (!campaignId) return err(404, 'no table answers to this code');
 
   const member: Member = {
     id: newId('m'),
-    campaignId: rec.campaignId,
+    campaignId,
     name,
     role: 'player',
     status: 'pending',
   };
   const token = crypto.randomUUID();
-  await putRecord(env, memberKey(rec.campaignId, member.id), member);
-  await putRecord(env, tokenKey(token), { campaignId: rec.campaignId, memberId: member.id } satisfies TokenRecord);
-  return Response.json({ campaignId: rec.campaignId, member, token }, { status: 201 });
+  await saveMember(env, member);
+  await insertToken(env, token, campaignId, member.id);
+  return Response.json({ campaignId, member, token }, { status: 201 });
 };

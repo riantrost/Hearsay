@@ -2,7 +2,7 @@
 // world has one owner; player-proposed pins are designed but post-V1).
 
 import { addPin } from '../../../../src/mutations';
-import { mutationError, param, pinKey, putRecord, readJson, requireOwner, requireSeat, type Env } from '../../../lib';
+import { mutationError, param, readJson, requireOwner, requireSeat, savePin, type Env } from '../../../lib';
 
 export const onRequestPost: PagesFunction<Env> = async ({ request, env, params }) => {
   const cid = param(params.id);
@@ -17,7 +17,7 @@ export const onRequestPost: PagesFunction<Env> = async ({ request, env, params }
   }
   try {
     const pin = addPin(seat.data, body.x, body.y, body.name);
-    await putRecord(env, pinKey(cid, pin.id), pin);
+    await savePin(env, pin);
     return Response.json(pin, { status: 201 });
   } catch (e) {
     return mutationError(e);

@@ -4,17 +4,7 @@
 
 import type { Campaign, Member } from '../../src/model';
 import { newId, newJoinCode } from '../../src/mutations';
-import {
-  campaignKey,
-  codeKey,
-  err,
-  MAX_MAP_BYTES,
-  memberKey,
-  putRecord,
-  tokenKey,
-  type Env,
-  type TokenRecord,
-} from '../lib';
+import { err, insertToken, MAX_MAP_BYTES, putJoinCode, saveCampaign, saveMember, type Env } from '../lib';
 
 export const onRequestPost: PagesFunction<Env> = async ({ request, env }) => {
   let form: FormData;
@@ -60,9 +50,9 @@ export const onRequestPost: PagesFunction<Env> = async ({ request, env }) => {
   await env.MAPS.put(`map/${cid}`, map, {
     httpMetadata: { contentType: map.type || 'application/octet-stream' },
   });
-  await putRecord(env, campaignKey(cid), campaign);
-  await putRecord(env, memberKey(cid, owner.id), owner);
-  await putRecord(env, tokenKey(token), { campaignId: cid, memberId: owner.id } satisfies TokenRecord);
-  await putRecord(env, codeKey(campaign.joinCode), { campaignId: cid });
+  await saveCampaign(env, campaign);
+  await saveMember(env, owner);
+  await insertToken(env, token, cid, owner.id);
+  await putJoinCode(env, campaign.joinCode, cid);
   return Response.json({ campaign, member: owner, token }, { status: 201 });
 };

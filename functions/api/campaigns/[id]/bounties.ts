@@ -4,7 +4,7 @@
 // owner until the owner nails it to the board.
 
 import { postBounty } from '../../../../src/mutations';
-import { bountyKey, mutationError, param, putRecord, readJson, requireSeat, type Env } from '../../../lib';
+import { mutationError, param, readJson, requireSeat, saveBounty, type Env } from '../../../lib';
 
 export const onRequestPost: PagesFunction<Env> = async ({ request, env, params }) => {
   const cid = param(params.id);
@@ -19,7 +19,7 @@ export const onRequestPost: PagesFunction<Env> = async ({ request, env, params }
       typeof body?.target === 'string' ? body.target : '',
       typeof body?.reason === 'string' ? body.reason : '',
     );
-    await putRecord(env, bountyKey(cid, bounty.id), bounty);
+    await saveBounty(env, bounty);
     return Response.json(bounty, { status: 201 });
   } catch (e) {
     return mutationError(e);

@@ -2,7 +2,7 @@
 // (owner-only: canon is authority by layer, never by moderation).
 
 import { addEvent } from '../../../../src/mutations';
-import { ensureRecord, eventKey, mutationError, param, pinKey, putRecord, readJson, requireOwner, requireSeat, type Env } from '../../../lib';
+import { mutationError, param, readJson, requireOwner, requireSeat, saveEvent, type Env } from '../../../lib';
 
 export const onRequestPost: PagesFunction<Env> = async ({ request, env, params }) => {
   const cid = param(params.id);
@@ -23,10 +23,8 @@ export const onRequestPost: PagesFunction<Env> = async ({ request, env, params }
     return mutationError(new Error('malformed event'));
   }
   try {
-    // a just-placed pin may not have reached KV's list yet — fetch it directly
-    await ensureRecord(env, seat.data.pins, body.pinId, pinKey(cid, body.pinId));
     const event = addEvent(seat.data, body.pinId, body.canonLine, participantIds, atmosphere);
-    await putRecord(env, eventKey(cid, event.id), event);
+    await saveEvent(env, cid, event);
     return Response.json(event, { status: 201 });
   } catch (e) {
     return mutationError(e);

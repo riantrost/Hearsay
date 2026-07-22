@@ -4,7 +4,7 @@
 // replay surfaces it with its event, never with its writing date.
 
 import { describe, expect, it } from 'vitest';
-import { siteMarks } from '../src/map/render';
+import { siteMarks } from '../src/derive';
 import { seed } from '../src/data/seed';
 
 describe('siteMarks', () => {

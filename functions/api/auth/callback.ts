@@ -5,10 +5,10 @@
 // server logs, and the handle inside it expires in minutes and holds no
 // campaign authority by itself — /link and /recover decide what it may do.
 
-import { err, googleSessionKey, type Env, type GoogleSession } from '../../lib';
+import { err, putGoogleSession, type Env } from '../../lib';
 
-/** KV TTL for a gsession: long enough to finish booting, nothing more. */
-const SESSION_TTL_S = 600;
+/** gsession lifetime: long enough to finish booting, nothing more. */
+const SESSION_TTL_MS = 600_000;
 
 export const onRequestGet: PagesFunction<Env> = async ({ request, env }) => {
   if (!env.GOOGLE_CLIENT_ID || !env.GOOGLE_CLIENT_SECRET) {
@@ -50,9 +50,7 @@ export const onRequestGet: PagesFunction<Env> = async ({ request, env }) => {
   }
 
   const gsession = crypto.randomUUID();
-  await env.HEARSAY.put(googleSessionKey(gsession), JSON.stringify({ sub, email } satisfies GoogleSession), {
-    expirationTtl: SESSION_TTL_S,
-  });
+  await putGoogleSession(env, gsession, { sub, email }, SESSION_TTL_MS);
   return new Response(null, {
     status: 302,
     headers: {

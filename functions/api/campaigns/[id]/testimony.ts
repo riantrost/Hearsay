@@ -4,7 +4,7 @@
 // the shared mutation layer.
 
 import { writeTestimony } from '../../../../src/mutations';
-import { ensureRecord, eventKey, mutationError, param, putRecord, readJson, requireSeat, testimonyKey, type Env } from '../../../lib';
+import { mutationError, param, readJson, requireSeat, saveTestimony, type Env } from '../../../lib';
 
 export const onRequestPost: PagesFunction<Env> = async ({ request, env, params }) => {
   const cid = param(params.id);
@@ -16,10 +16,8 @@ export const onRequestPost: PagesFunction<Env> = async ({ request, env, params }
     return mutationError(new Error('malformed testimony'));
   }
   try {
-    // a just-dropped event may not have reached KV's list yet — fetch it directly
-    await ensureRecord(env, seat.data.events, body.eventId, eventKey(cid, body.eventId));
     const entry = writeTestimony(seat.data, body.eventId, seat.member.id, body.text);
-    await putRecord(env, testimonyKey(cid, entry.id), entry);
+    await saveTestimony(env, cid, entry);
     return Response.json(entry, { status: 201 });
   } catch (e) {
     return mutationError(e);

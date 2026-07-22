@@ -5,7 +5,7 @@
 
 import { describe, expect, it } from 'vitest';
 import { revealPin, setPinHidden, visibleData } from '../src/mutations';
-import { ghostPins, stagedPins, visiblePins } from '../src/map/render';
+import { ghostPins, stagedPins, visiblePins } from '../src/derive';
 import { seed } from '../src/data/seed';
 import type { CampaignData } from '../src/model';
 

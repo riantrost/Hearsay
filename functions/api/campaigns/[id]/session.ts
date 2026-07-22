@@ -3,7 +3,7 @@
 // latches only when the new session's first event lands).
 
 import { advanceSession } from '../../../../src/mutations';
-import { campaignKey, param, putRecord, requireOwner, requireSeat, type Env } from '../../../lib';
+import { param, requireOwner, requireSeat, saveCampaign, type Env } from '../../../lib';
 
 export const onRequestPost: PagesFunction<Env> = async ({ request, env, params }) => {
   const cid = param(params.id);
@@ -13,6 +13,6 @@ export const onRequestPost: PagesFunction<Env> = async ({ request, env, params }
   if (notOwner) return notOwner;
 
   const currentSession = advanceSession(seat.data);
-  await putRecord(env, campaignKey(cid), seat.data.campaign);
+  await saveCampaign(env, seat.data.campaign);
   return Response.json({ currentSession });
 };

@@ -4,7 +4,7 @@
 // receive its first event — for players the line holds unchanged.
 
 import { describe, expect, it } from 'vitest';
-import { ghostPins, visiblePins } from '../src/map/render';
+import { ghostPins, visiblePins } from '../src/derive';
 import { seed } from '../src/data/seed';
 
 describe('visiblePins', () => {
