@@ -14,8 +14,6 @@ import type { Bounty, Campaign, CampaignData, Member, Pin, SiteEvent, Testimony 
 
 export interface Env {
   DB: D1Database;
-  /** KV retires after the D1 cutover soak (Stage 6); bound through the window. */
-  HEARSAY: KVNamespace;
   MAPS: R2Bucket;
   /** Google OAuth client for seat recovery (optional — unset disables the feature). */
   GOOGLE_CLIENT_ID?: string;

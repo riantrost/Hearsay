@@ -5,13 +5,9 @@ name = "hearsay-preview"
 compatibility_date = "2026-07-01"
 pages_build_output_dir = "dist"
 
-[[kv_namespaces]]
-binding = "HEARSAY"
-id = "0a135109757a4ef9888227d997977809"
-
 # Campaign data lives here since the KV→D1 migration (strongly consistent —
-# the eventual-consistency ledger era is over). KV stays bound only through
-# the cutover window (auth sessions + the Example Table copy), then retires.
+# the eventual-consistency ledger era is over). The KV namespace retired
+# 2026-07-22, post-soak: binding dropped, namespace deleted.
 [[d1_databases]]
 binding = "DB"
 database_name = "hearsay"
